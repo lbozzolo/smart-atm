@@ -4,12 +4,14 @@ import { useState } from 'react'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import ModernCallsTable from '@/components/ModernCallsTable'
+import ProtectedRoute from '@/components/ProtectedRoute'
 
 export default function CallsPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
+    <ProtectedRoute>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
       {/* Sidebar */}
       <Sidebar activeItem="calls" />
       
@@ -102,5 +104,6 @@ export default function CallsPage() {
         </div>
       </main>
     </div>
+    </ProtectedRoute>
   )
 }

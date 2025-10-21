@@ -6,46 +6,48 @@ import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import MetricsSection from '@/components/MetricsSection'
 import ModernCallsTable from '@/components/ModernCallsTable'
+import ProtectedRoute from '@/components/ProtectedRoute'
 
 export default function Home() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
-      {/* Sidebar */}
-      <Sidebar activeItem="calls" />
-      
-      {/* Header */}
-      <Header sidebarCollapsed={sidebarCollapsed} currentPage="Llamadas" pageTitle="Gestión de Llamadas" />
-      
-      {/* Main Content */}
-      <main className={`
-        pt-20 pb-8 px-6 transition-all duration-300
-        ${sidebarCollapsed ? 'ml-20' : 'ml-64'}
-      `}>
-        <div className="max-w-7xl mx-auto space-y-8">
-          
-          {/* Welcome Section */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-bold text-slate-800 mb-2">
-                  Dashboard de Llamadas
-                </h1>
-                <p className="text-slate-600">
-                  Gestiona y analiza todas las llamadas del sistema Smart ATM
-                </p>
+    <ProtectedRoute>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
+        {/* Sidebar */}
+        <Sidebar activeItem="calls" />
+        
+        {/* Header */}
+        <Header sidebarCollapsed={sidebarCollapsed} currentPage="Llamadas" pageTitle="Gestión de Llamadas" />
+        
+        {/* Main Content */}
+        <main className={`
+          pt-20 pb-8 px-6 transition-all duration-300
+          ${sidebarCollapsed ? 'ml-20' : 'ml-64'}
+        `}>
+          <div className="max-w-7xl mx-auto space-y-8">
+            
+            {/* Welcome Section */}
+            <div className="mb-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-3xl font-bold text-slate-800 mb-2">
+                    Dashboard de Llamadas
+                  </h1>
+                  <p className="text-slate-600">
+                    Gestiona y analiza todas las llamadas del sistema Smart ATM
+                  </p>
+                </div>
+                
+
               </div>
-              
-
             </div>
-          </div>
 
-          {/* Metrics Section */}
-          <MetricsSection />
+            {/* Metrics Section */}
+            <MetricsSection />
 
-          {/* Calls Table */}
-          <ModernCallsTable />
+            {/* Calls Table */}
+            <ModernCallsTable />
           
           {/* Footer */}
           <footer className="text-center py-8 border-t border-slate-200 bg-white/50 rounded-2xl backdrop-blur-sm">
@@ -63,5 +65,6 @@ export default function Home() {
         </div>
       </main>
     </div>
+    </ProtectedRoute>
   )
 }

@@ -3,12 +3,14 @@
 import { useState } from 'react'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
+import ProtectedRoute from '@/components/ProtectedRoute'
 
 export default function AnalyticsPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
+    <ProtectedRoute>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
       {/* Sidebar */}
       <Sidebar activeItem="analytics" />
       
@@ -50,5 +52,6 @@ export default function AnalyticsPage() {
         </div>
       </main>
     </div>
+    </ProtectedRoute>
   )
 }

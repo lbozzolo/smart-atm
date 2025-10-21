@@ -1,10 +1,15 @@
 
 import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
+// Cliente para uso general (mantener compatibilidad)
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+// Cliente para autenticación en el navegador
+export const createSupabaseClient = () => createBrowserClient(supabaseUrl, supabaseAnonKey)
 
 // Definir el tipo de datos para la tabla calls
 export interface Call {

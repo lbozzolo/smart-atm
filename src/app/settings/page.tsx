@@ -3,12 +3,14 @@
 import { useState } from 'react'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
+import ProtectedRoute from '@/components/ProtectedRoute'
 
 export default function SettingsPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
+    <ProtectedRoute>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
       {/* Sidebar */}
       <Sidebar activeItem="settings" />
       
@@ -68,5 +70,6 @@ export default function SettingsPage() {
         </div>
       </main>
     </div>
+    </ProtectedRoute>
   )
 }

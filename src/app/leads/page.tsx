@@ -5,6 +5,7 @@ import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import LeadsTable from '@/components/LeadsTable'
 import AnalysisModal from '@/components/AnalysisModal'
+import ProtectedRoute from '@/components/ProtectedRoute'
 import { Call } from '@/lib/supabase'
 
 export default function LeadsPage() {
@@ -23,7 +24,8 @@ export default function LeadsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
+    <ProtectedRoute>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
       {/* Sidebar */}
       <Sidebar activeItem="leads" />
       
@@ -49,5 +51,6 @@ export default function LeadsPage() {
         />
       )}
     </div>
+    </ProtectedRoute>
   )
 }
