@@ -62,10 +62,10 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
         const restOfLine = line.substring(agentMatch[0].length)
         return (
           <div key={lineIndex} className="mb-2">
-            <span className="text-slate-600">{prefix}</span>
-            <span className="font-semibold text-blue-600 bg-blue-50 px-1 rounded">{word}</span>
-            <span className="text-slate-600">{suffix}</span>
-            <span className="text-slate-700">{restOfLine}</span>
+            <span className="text-theme-text-secondary">{prefix}</span>
+            <span className="font-semibold text-theme-primary bg-theme-primary/10 px-1 rounded">{word}</span>
+            <span className="text-theme-text-secondary">{suffix}</span>
+            <span className="text-theme-text-primary">{restOfLine}</span>
           </div>
         )
       }
@@ -76,17 +76,17 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
         const restOfLine = line.substring(userMatch[0].length)
         return (
           <div key={lineIndex} className="mb-2">
-            <span className="text-slate-600">{prefix}</span>
-            <span className="font-semibold text-green-600 bg-green-50 px-1 rounded">{word}</span>
-            <span className="text-slate-600">{suffix}</span>
-            <span className="text-slate-700">{restOfLine}</span>
+            <span className="text-theme-text-secondary">{prefix}</span>
+            <span className="font-semibold text-theme-success bg-theme-success/10 px-1 rounded">{word}</span>
+            <span className="text-theme-text-secondary">{suffix}</span>
+            <span className="text-theme-text-primary">{restOfLine}</span>
           </div>
         )
       }
       
       // Si no hay match, devolver la línea normal
       return (
-        <div key={lineIndex} className="mb-2 text-slate-700">
+        <div key={lineIndex} className="mb-2 text-theme-text-primary">
           {line}
         </div>
       )
@@ -115,20 +115,18 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
   }
 
-  const getSentimentColor = (sentiment?: string) => {
-    if (!sentiment) return 'bg-slate-100 text-slate-600'
+    const getSentimentColor = (sentiment: string | null | undefined) => {
+    if (!sentiment) return 'bg-theme-surface-hover text-theme-text-muted'
     
     switch (sentiment.toLowerCase()) {
       case 'positive':
-      case 'positivo':
-        return 'bg-slate-100 text-slate-700 border-slate-200'
+        return 'bg-theme-success/10 text-theme-success border-theme-success/20'
       case 'negative':
-      case 'negativo':
-        return 'bg-gray-100 text-gray-700 border-gray-200'
+        return 'bg-theme-error/10 text-theme-error border-theme-error/20'
       case 'neutral':
-        return 'bg-stone-100 text-stone-700 border-stone-200'
+        return 'bg-theme-surface-hover text-theme-text-muted border-theme-border'
       default:
-        return 'bg-slate-100 text-slate-600 border-slate-200'
+        return 'bg-theme-surface-hover text-theme-text-secondary border-theme-border'
     }
   }
 
@@ -149,42 +147,29 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
     }
   }
 
-  const getDispositionBadge = (disposition?: string) => {
-    if (!disposition) return 'bg-gray-100 text-gray-600 border-gray-200'
+    const getDispositionColor = (disposition: string | null | undefined) => {
+    if (!disposition) return 'bg-theme-surface-hover text-theme-text-muted border-theme-border'
     
     switch (disposition.toLowerCase()) {
-      case 'successful':
-      case 'success':
-      case 'exitosa':
-      case 'completada':
-        return 'bg-green-100 text-green-700 border-green-200'
-      case 'failed':
-      case 'failure':
-      case 'fallida':
-      case 'error':
-        return 'bg-red-100 text-red-700 border-red-200'
-      case 'pending':
-      case 'pendiente':
-      case 'en_proceso':
-        return 'bg-yellow-100 text-yellow-700 border-yellow-200'
-      case 'cancelled':
-      case 'cancelada':
-      case 'canceled':
-        return 'bg-gray-100 text-gray-700 border-gray-200'
+      case 'sale':
+      case 'interested':
+      case 'appointment':
+      case 'callback':
+        return 'bg-theme-success/10 text-theme-success border-theme-success/20'
+      case 'not_interested':
       case 'no_answer':
-      case 'sin_respuesta':
-      case 'no_response':
-        return 'bg-orange-100 text-orange-700 border-orange-200'
+      case 'hangup':
+      case 'wrong_number':
+        return 'bg-theme-error/10 text-theme-error border-theme-error/20'
       case 'busy':
-      case 'ocupado':
       case 'busy_signal':
-        return 'bg-purple-100 text-purple-700 border-purple-200'
+        return 'bg-theme-accent/10 text-theme-accent border-theme-accent/20'
       case 'voicemail':
       case 'buzon':
       case 'voicemail_left':
-        return 'bg-blue-100 text-blue-700 border-blue-200'
+        return 'bg-theme-primary/10 text-theme-primary border-theme-primary/20'
       default:
-        return 'bg-slate-100 text-slate-700 border-slate-200'
+        return 'bg-theme-surface-hover text-theme-text-muted border-theme-border'
     }
   }
 
@@ -192,21 +177,23 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden border border-slate-200 animate-in slide-in-from-bottom-2 duration-300">
+      <div className="bg-theme-surface rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden border border-theme-border animate-in slide-in-from-bottom-2 duration-300">
         
         {/* Header compacto */}
-        <div className="bg-slate-800 px-4 py-3 border-b border-slate-200">
+        <div className="bg-theme-surface-hover px-4 py-3 border-b border-theme-border">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
-              <div className="w-6 h-6 bg-white/10 rounded flex items-center justify-center">
-                <span className="text-sm">📊</span>
+              <div className="w-6 h-6 bg-theme-primary/10 rounded flex items-center justify-center">
+                <svg className="w-4 h-4 text-theme-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
               </div>
               <div className="min-w-0 flex-1">
-                <h2 className="text-lg font-semibold text-white">
+                <h2 className="text-lg font-semibold text-theme-text-primary">
                   Análisis de Llamada
                 </h2>
                 <div className="flex items-center space-x-2">
-                  <p className="text-slate-400 text-xs font-mono truncate">
+                  <p className="text-theme-text-secondary text-xs font-mono truncate">
                     {callId}
                   </p>
                   <button
@@ -221,8 +208,8 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                     }}
                     className={`flex items-center justify-center w-5 h-5 rounded text-xs transition-all duration-150 ${
                       copied 
-                        ? 'text-green-400 bg-green-400/20' 
-                        : 'text-slate-400 hover:text-white hover:bg-white/10'
+                        ? 'text-theme-success bg-theme-success/20' 
+                        : 'text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-primary/10'
                     }`}
                     title={copied ? "¡Copiado!" : "Copiar ID de llamada"}
                   >
@@ -241,7 +228,7 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
             </div>
             <button
               onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 rounded transition-all duration-150"
+              className="w-8 h-8 flex items-center justify-center text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-primary/10 rounded transition-all duration-150"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -252,19 +239,35 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
           {/* Pestañas compactas */}
           <div className="mt-3 flex space-x-1">
             {[
-              { id: 'overview', label: 'Vista General', icon: '🎯' },
-              { id: 'transcript', label: 'Transcripción', icon: '📝' }
+              { 
+                id: 'overview', 
+                label: 'Vista General', 
+                icon: (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                )
+              },
+              { 
+                id: 'transcript', 
+                label: 'Transcripción', 
+                icon: (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                )
+              }
             ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
                 className={`flex items-center space-x-1 px-3 py-1.5 rounded text-sm font-medium transition-all duration-150 ${
                   activeTab === tab.id
-                    ? 'bg-white text-slate-800'
-                    : 'text-slate-300 hover:text-white hover:bg-white/10'
+                    ? 'bg-theme-primary text-white'
+                    : 'text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-primary/10'
                 }`}
               >
-                <span className="text-xs">{tab.icon}</span>
+                <div className="text-xs">{tab.icon}</div>
                 <span>{tab.label}</span>
               </button>
             ))}
@@ -276,10 +279,10 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
           {loading ? (
             <div className="flex flex-col items-center justify-center p-12">
               <div className="relative mb-4">
-                <div className="w-8 h-8 border-2 border-slate-200 rounded-full animate-spin"></div>
-                <div className="w-8 h-8 border-2 border-slate-600 border-t-transparent rounded-full animate-spin absolute top-0"></div>
+                <div className="w-8 h-8 border-2 border-theme-border rounded-full animate-spin"></div>
+                <div className="w-8 h-8 border-2 border-theme-primary border-t-transparent rounded-full animate-spin absolute top-0"></div>
               </div>
-              <p className="text-sm text-slate-600">Cargando análisis...</p>
+              <p className="text-sm text-theme-text-secondary">Cargando análisis...</p>
             </div>
           ) : error ? (
             <div className="p-6 m-4 bg-red-50 border border-red-200 rounded-lg">
@@ -298,13 +301,15 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
               </div>
             </div>
           ) : pcaData.length === 0 ? (
-            <div className="p-6 m-4 bg-slate-50 border border-slate-200 rounded-lg">
+            <div className="p-6 m-4 bg-theme-surface-hover border border-theme-border rounded-lg">
               <div className="text-center">
-                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <span className="text-xl">📊</span>
+                <div className="w-12 h-12 bg-theme-surface-hover rounded-full flex items-center justify-center mx-auto mb-3">
+                  <svg className="w-6 h-6 text-theme-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
                 </div>
-                <h3 className="text-sm font-semibold text-slate-700 mb-1">No hay análisis disponible</h3>
-                <p className="text-xs text-slate-600">Esta llamada aún no ha sido procesada</p>
+                <h3 className="text-sm font-semibold text-theme-text-primary mb-1">No hay análisis disponible</h3>
+                <p className="text-xs text-theme-text-secondary">Esta llamada aún no ha sido procesada</p>
               </div>
             </div>
           ) : (
@@ -327,7 +332,15 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                               </p>
                             </div>
                             <div className="w-8 h-8 bg-slate-100 rounded flex items-center justify-center">
-                              <span className="text-lg">{pca.call_successful ? '✅' : '❌'}</span>
+                              {pca.call_successful ? (
+                                <svg className="w-5 h-5 text-theme-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                              ) : (
+                                <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -339,7 +352,9 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                               <p className="text-lg font-semibold text-gray-800">{formatDuration(pca.duration_ms)}</p>
                             </div>
                             <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center">
-                              <span className="text-lg">⏱️</span>
+                              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
                             </div>
                           </div>
                         </div>
@@ -359,10 +374,18 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
 
                       {/* Información del Cliente */}
                       {callData && (
-                        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 mb-4">
-                          <h3 className="flex items-center text-sm font-semibold text-blue-800 mb-3">
-                            <span className="w-5 h-5 bg-blue-100 rounded flex items-center justify-center mr-2 text-xs">
-                              {isCallback ? '🔄' : '👨‍💼'}
+                        <div className="bg-theme-primary/10 border border-theme-primary/20 rounded-lg p-4 mb-4">
+                          <h3 className="flex items-center text-sm font-semibold text-theme-primary mb-3">
+                            <span className="w-5 h-5 bg-theme-primary/10 rounded flex items-center justify-center mr-2 text-xs">
+                              {isCallback ? (
+                                <svg className="w-3 h-3 text-theme-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                              ) : (
+                                <svg className="w-3 h-3 text-theme-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                </svg>
+                              )}
                             </span>
                             {isCallback ? 'Información del Callback' : 'Información del Cliente'}
                           </h3>
@@ -372,32 +395,32 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div className="space-y-2">
                                 <div className="flex justify-between items-center py-1">
-                                  <span className="text-blue-700 text-xs font-medium">Propietario</span>
-                                  <span className="font-semibold text-blue-900 text-xs">{callbackData.callback_owner_name || 'N/A'}</span>
+                                  <span className="text-theme-text-secondary text-xs font-medium">Propietario</span>
+                                  <span className="font-semibold text-theme-text-primary text-xs">{callbackData.callback_owner_name || 'N/A'}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-1">
-                                  <span className="text-blue-700 text-xs font-medium">Teléfono</span>
-                                  <span className="font-mono text-blue-900 text-xs">{callbackData.to_number || 'N/A'}</span>
+                                  <span className="text-theme-text-secondary text-xs font-medium">Teléfono</span>
+                                  <span className="font-mono text-theme-text-primary text-xs">{callbackData.to_number || 'N/A'}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-1">
-                                  <span className="text-blue-700 text-xs font-medium">Disposition</span>
-                                  <span className="font-medium text-blue-900 text-xs">{callbackData.disposition || 'callback'}</span>
+                                  <span className="text-theme-text-secondary text-xs font-medium">Disposition</span>
+                                  <span className="font-medium text-theme-text-primary text-xs">{callbackData.disposition || 'callback'}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-1">
-                                  <span className="text-blue-700 text-xs font-medium">Fecha de Callback</span>
-                                  <span className="font-medium text-blue-900 text-xs">
+                                  <span className="text-theme-text-secondary text-xs font-medium">Fecha de Callback</span>
+                                  <span className="font-medium text-theme-text-primary text-xs">
                                     {callbackData.callback_time_text_raw || callbackData.callback_time || 'N/A'}
                                   </span>
                                 </div>
                               </div>
                               <div className="space-y-2">
                                 <div className="flex justify-between items-center py-1">
-                                  <span className="text-blue-700 text-xs font-medium">Estado</span>
-                                  <span className="font-medium text-blue-900 text-xs">{callbackData.lead_state || 'N/A'}</span>
+                                  <span className="text-theme-text-secondary text-xs font-medium">Estado</span>
+                                  <span className="font-medium text-theme-text-primary text-xs">{callbackData.lead_state || 'N/A'}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-1">
-                                  <span className="text-blue-700 text-xs font-medium">Zona Horaria</span>
-                                  <span className="font-medium text-blue-900 text-xs">{callbackData.caller_tz || 'N/A'}</span>
+                                  <span className="text-theme-text-secondary text-xs font-medium">Zona Horaria</span>
+                                  <span className="font-medium text-theme-text-primary text-xs">{callbackData.caller_tz || 'N/A'}</span>
                                 </div>
                               </div>
                             </div>
@@ -406,50 +429,50 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div className="space-y-2">
                                 <div className="flex justify-between items-center py-1">
-                                  <span className="text-blue-700 text-xs font-medium">Propietario</span>
-                                  <span className="font-semibold text-blue-900 text-xs">{callData.owner_name || 'N/A'}</span>
+                                  <span className="text-theme-text-secondary text-xs font-medium">Propietario</span>
+                                  <span className="font-semibold text-theme-text-primary text-xs">{callData.owner_name || 'N/A'}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-1">
-                                  <span className="text-blue-700 text-xs font-medium">Negocio</span>
-                                  <span className="font-semibold text-blue-900 text-xs">{callData.business_name || 'N/A'}</span>
+                                  <span className="text-theme-text-secondary text-xs font-medium">Negocio</span>
+                                  <span className="font-semibold text-theme-text-primary text-xs">{callData.business_name || 'N/A'}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-1">
-                                  <span className="text-blue-700 text-xs font-medium">Tipo de Negocio</span>
-                                  <span className="font-medium text-blue-900 text-xs">{callData.location_type || 'N/A'}</span>
+                                  <span className="text-theme-text-secondary text-xs font-medium">Tipo de Negocio</span>
+                                  <span className="font-medium text-theme-text-primary text-xs">{callData.location_type || 'N/A'}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-1">
-                                  <span className="text-blue-700 text-xs font-medium">Teléfono</span>
-                                  <span className="font-mono text-blue-900 text-xs">{callData.owner_phone || 'N/A'}</span>
+                                  <span className="text-theme-text-secondary text-xs font-medium">Teléfono</span>
+                                  <span className="font-mono text-theme-text-primary text-xs">{callData.owner_phone || 'N/A'}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-1">
-                                  <span className="text-blue-700 text-xs font-medium">Email</span>
-                                  <span className="font-mono text-blue-900 text-xs">{callData.owner_email || 'N/A'}</span>
+                                  <span className="text-theme-text-secondary text-xs font-medium">Email</span>
+                                  <span className="font-mono text-theme-text-primary text-xs">{callData.owner_email || 'N/A'}</span>
                                 </div>
                               </div>
                               <div className="space-y-2">
                                 <div className="flex justify-between items-center py-1">
-                                  <span className="text-blue-700 text-xs font-medium">Dirección</span>
-                                  <span className="font-medium text-blue-900 text-xs">
+                                  <span className="text-theme-text-secondary text-xs font-medium">Dirección</span>
+                                  <span className="font-medium text-theme-text-primary text-xs">
                                     {[callData.address_street, callData.address_city, callData.address_state]
                                       .filter(Boolean)
                                       .join(', ') || 'N/A'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between items-center py-1">
-                                  <span className="text-blue-700 text-xs font-medium">Código Postal</span>
-                                  <span className="font-mono text-blue-900 text-xs">{callData.address_zip || 'N/A'}</span>
+                                  <span className="text-theme-text-secondary text-xs font-medium">Código Postal</span>
+                                  <span className="font-mono text-theme-text-primary text-xs">{callData.address_zip || 'N/A'}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-1">
-                                  <span className="text-blue-700 text-xs font-medium">Horarios</span>
-                                  <span className="font-medium text-blue-900 text-xs">{callData.business_hours || 'N/A'}</span>
+                                  <span className="text-theme-text-secondary text-xs font-medium">Horarios</span>
+                                  <span className="font-medium text-theme-text-primary text-xs">{callData.business_hours || 'N/A'}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-1">
-                                  <span className="text-blue-700 text-xs font-medium">Otras Ubicaciones</span>
-                                  <span className="font-medium text-blue-900 text-xs">{callData.other_locations || 'N/A'}</span>
+                                  <span className="text-theme-text-secondary text-xs font-medium">Otras Ubicaciones</span>
+                                  <span className="font-medium text-theme-text-primary text-xs">{callData.other_locations || 'N/A'}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-1">
-                                  <span className="text-blue-700 text-xs font-medium">Monto Acordado</span>
-                                  <span className="font-bold text-green-700 text-xs">
+                                  <span className="text-theme-text-secondary text-xs font-medium">Monto Acordado</span>
+                                  <span className="font-bold text-theme-success text-xs">
                                     {callData.agreed_amount ? `$${callData.agreed_amount.toLocaleString()}` : 'N/A'}
                                   </span>
                                 </div>
@@ -464,7 +487,11 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                           <div className="bg-white rounded-lg border border-slate-200 p-4">
                             <h3 className="flex items-center text-sm font-semibold text-slate-800 mb-3">
-                              <span className="w-5 h-5 bg-slate-100 rounded flex items-center justify-center mr-2 text-xs">👤</span>
+                              <span className="w-5 h-5 bg-slate-100 rounded flex items-center justify-center mr-2 text-xs">
+                                <svg className="w-3 h-3 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                </svg>
+                              </span>
                               Información del Agente
                             </h3>
                             <div className="space-y-2">
@@ -473,8 +500,8 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                                 <span className="font-medium text-slate-800 text-xs">{pca.agent_name || 'N/A'}</span>
                               </div>
                               <div className="flex justify-between items-center py-1">
-                                <span className="text-slate-600 text-xs">Disposición</span>
-                                <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium border ${getDispositionBadge(pca.disposition)}`}>
+                                <span className="text-theme-text-secondary text-xs">Disposición</span>
+                                <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium border ${getDispositionColor(pca.disposition)}`}>
                                   {pca.disposition || 'N/A'}
                                 </span>
                               </div>
@@ -483,7 +510,11 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
 
                           <div className="bg-white rounded-lg border border-slate-200 p-4">
                             <h3 className="flex items-center text-sm font-semibold text-slate-800 mb-3">
-                              <span className="w-5 h-5 bg-slate-100 rounded flex items-center justify-center mr-2 text-xs">🕐</span>
+                              <span className="w-5 h-5 bg-slate-100 rounded flex items-center justify-center mr-2 text-xs">
+                                <svg className="w-3 h-3 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                              </span>
                               Marcas de Tiempo
                             </h3>
                             <div className="space-y-2">
@@ -504,7 +535,11 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                       {isCallback && callbackData && (
                         <div className="bg-white rounded-lg border border-slate-200 p-4">
                           <h3 className="flex items-center text-sm font-semibold text-slate-800 mb-3">
-                            <span className="w-5 h-5 bg-slate-100 rounded flex items-center justify-center mr-2 text-xs">📅</span>
+                            <span className="w-5 h-5 bg-slate-100 rounded flex items-center justify-center mr-2 text-xs">
+                              <svg className="w-3 h-3 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                            </span>
                             Fecha de la Llamada Original
                           </h3>
                           <div className="space-y-2">
@@ -524,16 +559,22 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                         <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
                           <div className="flex items-center justify-between mb-3">
                             <h3 className="flex items-center text-sm font-semibold text-slate-800">
-                              <span className="w-5 h-5 bg-slate-100 rounded flex items-center justify-center mr-2 text-xs">📋</span>
+                              <span className="w-5 h-5 bg-slate-100 rounded flex items-center justify-center mr-2 text-xs">
+                                <svg className="w-3 h-3 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              </span>
                               Resumen
                             </h3>
                             {pca.recording_url && (
                               <a
                                 href={pca.recording_url}
                                 download
-                                className="flex items-center space-x-1 px-2 py-1 bg-blue-100 text-blue-800 border border-blue-200 rounded hover:bg-blue-200 transition-colors text-xs font-medium"
+                                className="flex items-center space-x-1 px-2 py-1 bg-theme-primary/10 text-theme-primary border border-theme-primary/20 rounded hover:bg-theme-primary/20 transition-colors text-xs font-medium"
                               >
-                                <span>🎵</span>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M9 12a3 3 0 106 0 3 3 0 00-6 0z" />
+                                </svg>
                                 <span>Audio</span>
                               </a>
                             )}
@@ -554,7 +595,11 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                       {pca.transcript ? (
                         <div className="p-4">
                           <div className="flex items-center mb-3">
-                            <span className="w-5 h-5 bg-slate-100 rounded flex items-center justify-center mr-2 text-xs">📝</span>
+                            <span className="w-5 h-5 bg-slate-100 rounded flex items-center justify-center mr-2 text-xs">
+                              <svg className="w-3 h-3 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </span>
                             <h3 className="text-sm font-semibold text-slate-800">Transcripción</h3>
                           </div>
                           <div className="bg-slate-50 rounded p-3 border border-slate-200">
@@ -566,7 +611,9 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                       ) : (
                         <div className="p-8 text-center">
                           <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                            <span className="text-lg">📝</span>
+                            <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
                           </div>
                           <h3 className="text-sm font-semibold text-slate-700 mb-1">Sin transcripción</h3>
                           <p className="text-xs text-slate-500">No hay transcripción disponible</p>

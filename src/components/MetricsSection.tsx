@@ -7,49 +7,61 @@ interface MetricCardProps {
   title: string
   value: string | number
   change?: string
-  icon: string
-  color: 'blue' | 'green' | 'purple' | 'orange' | 'red'
+  icon: React.ReactNode
+  color: 'primary' | 'success' | 'accent' | 'warning' | 'error'
   trend?: 'up' | 'down' | 'neutral'
 }
 
 function MetricCard({ title, value, change, icon, color, trend = 'neutral' }: MetricCardProps) {
   const colorClasses = {
-    blue: 'from-blue-500 to-blue-600 border-blue-500/20',
-    green: 'from-green-500 to-green-600 border-green-500/20',
-    purple: 'from-purple-500 to-purple-600 border-purple-500/20',
-    orange: 'from-orange-500 to-orange-600 border-orange-500/20',
-    red: 'from-red-500 to-red-600 border-red-500/20'
+    primary: 'bg-theme-primary',
+    success: 'bg-theme-success',
+    accent: 'bg-theme-accent',
+    warning: 'bg-theme-warning',
+    error: 'bg-theme-error'
   }
 
   const trendColors = {
-    up: 'text-green-600 bg-green-100',
-    down: 'text-red-600 bg-red-100',
-    neutral: 'text-slate-600 bg-slate-100'
+    up: 'text-theme-success bg-theme-success/10',
+    down: 'text-theme-error bg-theme-error/10',
+    neutral: 'text-theme-text-muted bg-theme-surface-hover'
   }
 
   const trendIcons = {
-    up: '↗️',
-    down: '↘️',
-    neutral: '➡️'
+    up: (
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 17l9.2-9.2M17 17V7m0 0H7" />
+      </svg>
+    ),
+    down: (
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 7l-9.2 9.2M7 7v10m0 0h10" />
+      </svg>
+    ),
+    neutral: (
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+      </svg>
+    )
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/60 p-6 hover:shadow-xl transition-all duration-300 hover:scale-[1.02]">
+    <div className="bg-theme-surface rounded-2xl border border-theme-border p-6 hover:shadow-xl transition-all duration-300 hover:scale-[1.02]">
       <div className="flex items-center justify-between mb-4">
-        <div className={`w-12 h-12 bg-gradient-to-r ${colorClasses[color]} rounded-xl flex items-center justify-center text-white text-xl shadow-lg`}>
+        <div className={`w-12 h-12 ${colorClasses[color]} rounded-xl flex items-center justify-center text-white text-xl shadow-lg`}>
           {icon}
         </div>
         {change && (
-          <div className={`px-3 py-1 rounded-full text-xs font-medium ${trendColors[trend]}`}>
-            <span className="mr-1">{trendIcons[trend]}</span>
-            {change}
+          <div className={`px-3 py-1 rounded-full text-xs font-medium ${trendColors[trend]} flex items-center space-x-1`}>
+            <span>{trendIcons[trend]}</span>
+            <span>{change}</span>
           </div>
         )}
       </div>
       
       <div className="space-y-1">
-        <h3 className="text-slate-600 text-sm font-medium">{title}</h3>
-        <p className="text-3xl font-bold text-slate-800">{value}</p>
+        <h3 className="text-theme-text-secondary text-sm font-medium">{title}</h3>
+        <p className="text-3xl font-bold text-theme-text-primary">{value}</p>
       </div>
     </div>
   )
@@ -111,8 +123,12 @@ export default function MetricsSection() {
         title="Total de Llamadas"
         value={totalCalls.toLocaleString()}
         change="+12%"
-        icon="📞"
-        color="blue"
+        icon={
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+          </svg>
+        }
+        color="primary"
         trend="up"
       />
       
@@ -120,8 +136,12 @@ export default function MetricsSection() {
         title="Tasa de Éxito"
         value={`${successRate}%`}
         change="+5.2%"
-        icon="✅"
-        color="green"
+        icon={
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        }
+        color="success"
         trend="up"
       />
       
@@ -129,8 +149,12 @@ export default function MetricsSection() {
         title="Con Análisis"
         value={`${analysisRate}%`}
         change={`${callsWithPCA}/${totalCalls}`}
-        icon="📊"
-        color="purple"
+        icon={
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+        }
+        color="accent"
         trend="neutral"
       />
       
@@ -138,8 +162,12 @@ export default function MetricsSection() {
         title="Monto Promedio"
         value={avgAmount > 0 ? `$${Math.round(avgAmount).toLocaleString()}` : 'N/A'}
         change="-2.1%"
-        icon="💰"
-        color="orange"
+        icon={
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+          </svg>
+        }
+        color="warning"
         trend="down"
       />
     </div>

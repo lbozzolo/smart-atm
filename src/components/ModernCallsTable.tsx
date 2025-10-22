@@ -1,13 +1,35 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { getCallsWithPagination, type CallWithPCAInfo, type PaginationParams } from '@/lib/supabase'
 import AnalysisModal from './AnalysisModal'
 
+// Función para formatear fecha en formato d-m-Y H:i
+const formatDate = (dateString: string | undefined) => {
+  if (!dateString) return 'Sin fecha'
+  
+  try {
+    const date = new Date(dateString)
+    // Si la fecha no es válida, mostrar call_id como referencia
+    if (isNaN(date.getTime())) {
+      return 'Pendiente BD'
+    }
+    
+    const day = date.getDate().toString().padStart(2, '0')
+    const month = (date.getMonth() + 1).toString().padStart(2, '0')
+    const year = date.getFullYear()
+    const hours = date.getHours().toString().padStart(2, '0')
+    const minutes = date.getMinutes().toString().padStart(2, '0')
+    
+    return `${day}-${month}-${year}  ${hours}:${minutes}`
+  } catch (error) {
+    return 'Pendiente BD'
+  }
+}
+
 interface TableFilters {
   search: string
-  status: string
-  hasPCA: string
+  disposition: string
   dateFrom: string
   dateTo: string
   sortBy: string
@@ -28,19 +50,36 @@ export default function ModernCallsTable() {
   const [totalItems, setTotalItems] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
   
+  // Estados para búsqueda mejorada
+  const [searchInput, setSearchInput] = useState('')
+  const debounceTimeoutRef = useRef<NodeJS.Timeout>()
+  
+  // Estados separados para fechas temporales y aplicadas
+  const [tempDateFilters, setTempDateFilters] = useState({
+    dateFrom: '',
+    dateTo: ''
+  })
+  
   const [filters, setFilters] = useState<TableFilters>({
     search: '',
-    status: 'all',
-    hasPCA: 'all',
+    disposition: 'all',
     dateFrom: '',
     dateTo: '',
-    sortBy: 'business_name',
+    sortBy: 'created_at',
     sortOrder: 'desc'
   })
 
   useEffect(() => {
     fetchCalls()
-  }, [currentPage, itemsPerPage, filters])
+  }, [currentPage, itemsPerPage, filters.search, filters.disposition, filters.sortBy, filters.sortOrder, filters.dateFrom, filters.dateTo])
+
+  // Sincronizar filtros temporales con filtros aplicados al montar
+  useEffect(() => {
+    setTempDateFilters({
+      dateFrom: filters.dateFrom,
+      dateTo: filters.dateTo
+    })
+  }, [filters.dateFrom, filters.dateTo])
 
   const fetchCalls = async () => {
     try {
@@ -54,7 +93,9 @@ export default function ModernCallsTable() {
         sortBy: filters.sortBy,
         sortOrder: filters.sortOrder,
         filters: {
-          hasPCA: filters.hasPCA === 'all' ? undefined : filters.hasPCA === 'with'
+          disposition: filters.disposition === 'all' ? undefined : filters.disposition,
+          dateFrom: filters.dateFrom || undefined,
+          dateTo: filters.dateTo || undefined
         }
       }
       
@@ -64,6 +105,15 @@ export default function ModernCallsTable() {
       setTotalItems(response.total)
       setTotalPages(response.totalPages)
     } catch (err) {
+      console.error('Error fetching calls:', err)
+      
+      // Si hay error con created_at, cambiar a call_id como fallback
+      if (err instanceof Error && err.message?.includes('created_at') && filters.sortBy === 'created_at') {
+        console.log('Fallback: cambiando ordenamiento a call_id')
+        setFilters(prev => ({ ...prev, sortBy: 'call_id' }))
+        return
+      }
+      
       setError(err instanceof Error ? err.message : 'Error desconocido')
       setCalls([])
       setTotalItems(0)
@@ -83,9 +133,66 @@ export default function ModernCallsTable() {
     setSelectedCallId(null)
   }
 
+  // Función para manejar búsqueda con debounce
+  const debouncedSearch = useCallback((searchTerm: string) => {
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current)
+    }
+    
+    debounceTimeoutRef.current = setTimeout(() => {
+      setFilters(prev => ({ ...prev, search: searchTerm }))
+      setCurrentPage(1)
+    }, 800) // Esperar 800ms después de dejar de escribir
+  }, [])
+
+  // Función para manejar el cambio en el input de búsqueda
+  const handleSearchInputChange = (value: string) => {
+    setSearchInput(value)
+    debouncedSearch(value)
+  }
+
+  // Función para buscar inmediatamente al presionar Enter
+  const handleSearchKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current)
+      }
+      setFilters(prev => ({ ...prev, search: searchInput }))
+      setCurrentPage(1)
+    }
+  }
+
+  // Limpiar timeout al desmontar componente
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current)
+      }
+    }
+  }, [])
+
   const handleFilterChange = (key: keyof TableFilters, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }))
     setCurrentPage(1) // Reset to first page when filtering
+  }
+
+  const handleTempDateChange = (key: 'dateFrom' | 'dateTo', value: string) => {
+    setTempDateFilters(prev => ({ ...prev, [key]: value }))
+  }
+
+  const applyDateFilters = () => {
+    setFilters(prev => ({
+      ...prev,
+      dateFrom: tempDateFilters.dateFrom,
+      dateTo: tempDateFilters.dateTo
+    }))
+    setCurrentPage(1)
+  }
+
+  const clearDateFilters = () => {
+    setTempDateFilters({ dateFrom: '', dateTo: '' })
+    setFilters(prev => ({ ...prev, dateFrom: '', dateTo: '' }))
+    setCurrentPage(1)
   }
 
   const handleSort = (column: string) => {
@@ -117,25 +224,26 @@ export default function ModernCallsTable() {
       // Dispositions positivos (verde)
       case 'new_lead':
       case 'interested':
+      case 'possibly_interested':
       case 'successful':
       case 'success':
       case 'sale':
       case 'converted':
-        return `${baseClasses} bg-green-100 text-green-800`
+        return `${baseClasses} bg-theme-success/10 text-theme-success`
       
       // Dispositions de seguimiento (azul)
       case 'callback':
       case 'follow_up':
       case 'scheduled':
       case 'reschedule':
-        return `${baseClasses} bg-blue-100 text-blue-800`
+        return `${baseClasses} bg-theme-primary/10 text-theme-primary`
       
       // Dispositions de no contacto (amarillo)
       case 'owner_not_present':
       case 'no_answer':
       case 'busy':
       case 'unavailable':
-        return `${baseClasses} bg-yellow-100 text-yellow-800`
+        return `${baseClasses} bg-theme-warning/10 text-theme-warning`
       
       // Dispositions negativos (rojo)
       case 'not_interested':
@@ -143,27 +251,27 @@ export default function ModernCallsTable() {
       case 'failure':
       case 'rejected':
       case 'wrong_number':
-        return `${baseClasses} bg-red-100 text-red-800`
+        return `${baseClasses} bg-theme-error/10 text-theme-error`
       
       // Dispositions pendientes (púrpura)
       case 'pending':
       case 'in_progress':
       case 'processing':
-        return `${baseClasses} bg-purple-100 text-purple-800`
+        return `${baseClasses} bg-theme-accent/10 text-theme-accent`
       
       // Default (gris)
       default:
-        return `${baseClasses} bg-slate-100 text-slate-600`
+        return `${baseClasses} bg-theme-surface-hover text-theme-text-muted`
     }
   }
 
   if (loading) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
+      <div className="bg-theme-surface rounded-theme-lg border border-theme-border shadow-sm">
         <div className="p-8 text-center">
           <div className="inline-flex items-center space-x-2">
-            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-            <span className="text-slate-600">Cargando llamadas...</span>
+            <div className="w-6 h-6 border-2 border-theme-primary border-t-transparent rounded-full animate-spin"></div>
+            <span className="text-theme-text-secondary">Cargando llamadas...</span>
           </div>
         </div>
       </div>
@@ -172,10 +280,10 @@ export default function ModernCallsTable() {
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-2xl p-8 text-center">
-        <div className="text-red-500 text-4xl mb-4">⚠️</div>
-        <h3 className="text-red-800 font-semibold text-lg mb-2">Error al cargar las llamadas</h3>
-        <p className="text-red-600">{error}</p>
+      <div className="bg-theme-error/10 border border-theme-error/20 rounded-2xl p-8 text-center">
+        <div className="text-theme-error text-4xl mb-4">⚠️</div>
+        <h3 className="text-theme-error font-semibold text-lg mb-2">Error al cargar las llamadas</h3>
+        <p className="text-theme-error">{error}</p>
       </div>
     )
   }
@@ -183,31 +291,79 @@ export default function ModernCallsTable() {
   return (
     <div className="space-y-6">
       {/* Table Header with Controls */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
-        <div className="p-6 border-b border-slate-200">
+      <div className="bg-theme-surface rounded-theme-lg border border-theme-border shadow-sm">
+        <div className="p-6 border-b border-theme-border">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
             <div className="flex items-center space-x-4">
-              <h2 className="text-xl font-bold text-slate-800">Tabla de Llamadas</h2>
-              <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+              <h2 className="text-xl font-bold text-theme-text-primary">Tabla de Llamadas</h2>
+              <span className="px-3 py-1 bg-theme-primary/10 text-theme-primary rounded-full text-sm font-medium">
                 {totalItems.toLocaleString()} registros
               </span>
             </div>
             
             <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
-              <input
-                type="text"
-                placeholder="Buscar por empresa, propietario, teléfono..."
-                value={filters.search}
-                onChange={(e) => handleFilterChange('search', e.target.value)}
-                className="px-4 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 text-sm"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Buscar por empresa, propietario, teléfono... (presiona Enter para buscar)"
+                  value={searchInput}
+                  onChange={(e) => handleSearchInputChange(e.target.value)}
+                  onKeyPress={handleSearchKeyPress}
+                  className="px-4 py-2 bg-theme-surface border border-theme-border rounded-theme focus:outline-none focus:ring-2 focus:ring-theme-primary/20 focus:border-theme-primary text-sm text-theme-text-primary min-w-[300px]"
+                />
+                {searchInput !== filters.search && (
+                  <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+                    <div className="w-2 h-2 bg-theme-primary rounded-full animate-pulse"></div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Botones de ordenamiento rápido */}
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => handleSort('created_at')}
+                  className={`px-3 py-2 text-sm font-medium rounded-theme transition-colors ${
+                    filters.sortBy === 'created_at' 
+                      ? 'bg-theme-primary text-white' 
+                      : 'bg-theme-surface-hover text-theme-text-primary hover:bg-theme-surface-hover'
+                  }`}
+                  title="Ordenar por fecha"
+                >
+                  <div className="flex items-center space-x-1">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    {filters.sortBy === 'created_at' && (
+                      <span className="text-xs">{filters.sortOrder === 'desc' ? '↓' : '↑'}</span>
+                    )}
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleSort('disposition')}
+                  className={`px-3 py-2 text-sm font-medium rounded-theme transition-colors ${
+                    filters.sortBy === 'disposition' 
+                      ? 'bg-theme-primary text-white' 
+                      : 'bg-theme-surface-hover text-theme-text-primary hover:bg-theme-surface-hover'
+                  }`}
+                  title="Ordenar por disposición"
+                >
+                  <div className="flex items-center space-x-1">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    {filters.sortBy === 'disposition' && (
+                      <span className="text-xs">{filters.sortOrder === 'desc' ? '↓' : '↑'}</span>
+                    )}
+                  </div>
+                </button>
+              </div>
               
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className={`px-4 py-2 border rounded-xl text-sm font-medium transition-colors ${
+                className={`px-4 py-2 border rounded-theme text-sm font-medium transition-colors ${
                   showFilters 
-                    ? 'bg-blue-500 text-white border-blue-500' 
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                    ? 'bg-theme-primary text-white border-theme-primary' 
+                    : 'bg-theme-surface text-theme-text-primary border-theme-border hover:bg-theme-surface-hover'
                 }`}
               >
                 🔍 Filtros
@@ -216,7 +372,7 @@ export default function ModernCallsTable() {
               <select
                 value={itemsPerPage}
                 onChange={(e) => setItemsPerPage(Number(e.target.value))}
-                className="px-4 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm"
+                className="px-4 py-2 bg-theme-surface border border-theme-border rounded-theme focus:outline-none focus:ring-2 focus:ring-theme-primary/20 text-sm text-theme-text-primary"
               >
                 <option value={10}>10 por página</option>
                 <option value={25}>25 por página</option>
@@ -228,53 +384,137 @@ export default function ModernCallsTable() {
           
           {/* Advanced Filters */}
           {showFilters && (
-            <div className="mt-6 pt-6 border-t border-slate-200">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="mt-6 pt-6 border-t border-theme-border">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                 <select
-                  value={filters.status}
-                  onChange={(e) => handleFilterChange('status', e.target.value)}
-                  className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm"
+                  value={filters.disposition}
+                  onChange={(e) => handleFilterChange('disposition', e.target.value)}
+                  className="px-3 py-2 border border-theme-border bg-theme-surface rounded-theme text-theme-text-primary focus:outline-none focus:ring-2 focus:ring-theme-primary/20 text-sm"
                 >
-                  <option value="all">Todos los estados</option>
-                  <option value="successful">Exitosas</option>
-                  <option value="failed">Fallidas</option>
-                  <option value="pending">Pendientes</option>
+                  <option value="all">Todas las disposiciones</option>
+                  <option value="new_lead">New Lead</option>
+                  <option value="possibly_interested">Possibly Interested</option>
+                  <option value="owner_not_present">Owner Not Present</option>
                 </select>
                 
-                <select
-                  value={filters.hasPCA}
-                  onChange={(e) => handleFilterChange('hasPCA', e.target.value)}
-                  className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm"
-                >
-                  <option value="all">Todos (con/sin análisis)</option>
-                  <option value="with">Solo con análisis</option>
-                  <option value="without">Solo sin análisis</option>
-                </select>
+                <div className="relative">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={tempDateFilters.dateFrom ? new Date(tempDateFilters.dateFrom + 'T00:00:00').toLocaleDateString('es-ES') : ''}
+                      onClick={() => {
+                        const dateInput = document.getElementById('dateFrom') as HTMLInputElement
+                        dateInput?.showPicker()
+                      }}
+                      readOnly
+                      placeholder="dd/mm/aaaa"
+                      className="pl-10 pr-8 py-2 border border-theme-border bg-theme-surface rounded-theme text-theme-text-primary focus:outline-none focus:ring-2 focus:ring-theme-primary/20 text-sm w-full cursor-pointer hover:bg-theme-surface-hover transition-colors"
+                    />
+                    <input
+                      id="dateFrom"
+                      type="date"
+                      value={tempDateFilters.dateFrom}
+                      onChange={(e) => handleTempDateChange('dateFrom', e.target.value)}
+                      className="absolute opacity-0 pointer-events-none"
+                    />
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                      <svg className="w-4 h-4 text-theme-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    {tempDateFilters.dateFrom && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleTempDateChange('dateFrom', '')
+                        }}
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 text-theme-text-secondary hover:text-theme-text-primary transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  <label className="absolute -top-2 left-2 bg-theme-surface px-1 text-xs text-theme-text-secondary">
+                    Desde
+                  </label>
+                </div>
                 
-                <input
-                  type="date"
-                  value={filters.dateFrom}
-                  onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
-                  className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm"
-                  placeholder="Desde"
-                />
+                <div className="relative">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={tempDateFilters.dateTo ? new Date(tempDateFilters.dateTo + 'T00:00:00').toLocaleDateString('es-ES') : ''}
+                      onClick={() => {
+                        const dateInput = document.getElementById('dateTo') as HTMLInputElement
+                        dateInput?.showPicker()
+                      }}
+                      readOnly
+                      placeholder="dd/mm/aaaa"
+                      className="pl-10 pr-8 py-2 border border-theme-border bg-theme-surface rounded-theme text-theme-text-primary focus:outline-none focus:ring-2 focus:ring-theme-primary/20 text-sm w-full cursor-pointer hover:bg-theme-surface-hover transition-colors"
+                    />
+                    <input
+                      id="dateTo"
+                      type="date"
+                      value={tempDateFilters.dateTo}
+                      onChange={(e) => handleTempDateChange('dateTo', e.target.value)}
+                      className="absolute opacity-0 pointer-events-none"
+                    />
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                      <svg className="w-4 h-4 text-theme-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    {tempDateFilters.dateTo && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleTempDateChange('dateTo', '')
+                        }}
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 text-theme-text-secondary hover:text-theme-text-primary transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  <label className="absolute -top-2 left-2 bg-theme-surface px-1 text-xs text-theme-text-secondary">
+                    Hasta
+                  </label>
+                </div>
                 
-                <input
-                  type="date"
-                  value={filters.dateTo}
-                  onChange={(e) => handleFilterChange('dateTo', e.target.value)}
-                  className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm"
-                  placeholder="Hasta"
-                />
+                {/* Botones de control de fechas */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={clearDateFilters}
+                    disabled={!tempDateFilters.dateFrom && !tempDateFilters.dateTo}
+                    className="px-3 py-2 text-theme-text-secondary hover:text-theme-text-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors border border-theme-border rounded-theme hover:bg-theme-surface-hover"
+                  >
+                    Limpiar fechas
+                  </button>
+                  <button
+                    onClick={applyDateFilters}
+                    disabled={!tempDateFilters.dateFrom && !tempDateFilters.dateTo}
+                    className="px-4 py-2 bg-theme-primary text-white rounded-theme hover:bg-theme-primary-hover text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                  >
+                    Aplicar filtros
+                  </button>
+                </div>
               </div>
               
               <div className="mt-4 flex justify-end">
                 <button
                   onClick={() => {
+                    if (debounceTimeoutRef.current) {
+                      clearTimeout(debounceTimeoutRef.current)
+                    }
+                    setSearchInput('')
+                    setTempDateFilters({ dateFrom: '', dateTo: '' })
                     setFilters({
                       search: '',
-                      status: 'all',
-                      hasPCA: 'all',
+                      disposition: 'all',
                       dateFrom: '',
                       dateTo: '',
                       sortBy: 'business_name',
@@ -282,7 +522,7 @@ export default function ModernCallsTable() {
                     })
                     setCurrentPage(1)
                   }}
-                  className="px-4 py-2 text-slate-600 hover:text-slate-800 text-sm"
+                  className="px-4 py-2 text-theme-text-secondary hover:text-theme-text-primary text-sm"
                 >
                   Limpiar filtros
                 </button>
@@ -294,10 +534,10 @@ export default function ModernCallsTable() {
         {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-slate-50">
+            <thead className="bg-theme-surface-hover">
               <tr>
                 <th 
-                  className="px-6 py-4 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100"
+                  className="px-6 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider cursor-pointer hover:bg-theme-surface-hover"
                   onClick={() => handleSort('business_name')}
                 >
                   <div className="flex items-center space-x-1">
@@ -308,7 +548,7 @@ export default function ModernCallsTable() {
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-4 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100"
+                  className="px-6 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider cursor-pointer hover:bg-theme-surface-hover"
                   onClick={() => handleSort('owner_name')}
                 >
                   <div className="flex items-center space-x-1">
@@ -318,14 +558,22 @@ export default function ModernCallsTable() {
                     )}
                   </div>
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                <th className="px-6 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider">
                   Teléfono
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Email
+                <th 
+                  className="px-6 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider cursor-pointer hover:bg-theme-surface-hover"
+                  onClick={() => handleSort('created_at')}
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Fecha</span>
+                    {filters.sortBy === 'created_at' && (
+                      <span>{filters.sortOrder === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
                 </th>
                 <th 
-                  className="px-6 py-4 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100"
+                  className="px-6 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider cursor-pointer hover:bg-theme-surface-hover"
                   onClick={() => handleSort('disposition')}
                 >
                   <div className="flex items-center space-x-1">
@@ -336,7 +584,7 @@ export default function ModernCallsTable() {
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-4 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100"
+                  className="px-6 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider cursor-pointer hover:bg-theme-surface-hover"
                   onClick={() => handleSort('agreed_amount')}
                 >
                   <div className="flex items-center space-x-1">
@@ -346,28 +594,28 @@ export default function ModernCallsTable() {
                     )}
                   </div>
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                <th className="px-6 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider">
                   Acciones
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-slate-200">
+            <tbody className="bg-theme-surface divide-y divide-theme-border">
               {paginatedCalls.map((call, index) => (
                 <tr 
                   key={call.call_id} 
-                  className="hover:bg-slate-50 transition-colors"
+                  className="hover:bg-theme-surface-hover transition-colors"
                 >
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-slate-900">{call.business_name || 'N/A'}</div>
+                    <div className="text-sm text-theme-text-primary">{call.business_name || 'N/A'}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-slate-900">{call.owner_name || 'N/A'}</div>
+                    <div className="text-sm text-theme-text-primary">{call.owner_name || 'N/A'}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-mono text-slate-500">{call.owner_phone || 'N/A'}</div>
+                    <div className="text-sm font-mono text-theme-text-muted">{call.owner_phone || 'N/A'}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-slate-500">{call.owner_email || 'N/A'}</div>
+                    <div className="text-sm text-theme-text-secondary">{formatDate(call.created_at)}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={getStatusBadge(call.disposition)}>
@@ -375,7 +623,7 @@ export default function ModernCallsTable() {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-semibold text-slate-900">
+                    <div className="text-sm font-semibold text-theme-text-primary">
                       {call.agreed_amount ? `$${call.agreed_amount.toLocaleString()}` : 'N/A'}
                     </div>
                   </td>
@@ -383,10 +631,10 @@ export default function ModernCallsTable() {
                     {call.hasPCA && (
                       <button
                         onClick={() => handleViewAnalysis(call.call_id)}
-                        className="inline-flex items-center px-3 py-1.5 border border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg text-xs font-medium transition-colors"
+                        className="inline-flex items-center px-3 py-1.5 border border-theme-accent text-theme-accent bg-theme-accent/10 hover:bg-theme-accent/20 rounded-theme text-xs font-medium transition-colors"
                       >
                         Análisis
-                        <span className="ml-1 w-2 h-2 bg-purple-500 rounded-full"></span>
+                        <span className="ml-1 w-2 h-2 bg-theme-accent rounded-full"></span>
                       </button>
                     )}
                   </td>
@@ -398,9 +646,9 @@ export default function ModernCallsTable() {
         
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="px-6 py-4 border-t border-slate-200 bg-slate-50">
+          <div className="px-6 py-4 border-t border-theme-border bg-theme-surface-hover">
             <div className="flex items-center justify-between">
-              <div className="text-sm text-slate-700">
+              <div className="text-sm text-theme-text-primary">
                 Mostrando {startIndex + 1} a {Math.min(startIndex + itemsPerPage, totalItems)} de {totalItems} registros
               </div>
               
@@ -408,19 +656,19 @@ export default function ModernCallsTable() {
                 <button
                   onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                   disabled={currentPage === 1}
-                  className="px-3 py-1 border border-slate-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-100"
+                  className="px-3 py-1 border border-theme-border rounded-theme text-sm text-theme-text-primary disabled:opacity-50 disabled:cursor-not-allowed hover:bg-theme-surface"
                 >
                   Anterior
                 </button>
                 
-                <span className="text-sm text-slate-600">
+                <span className="text-sm text-theme-text-secondary">
                   Página {currentPage} de {totalPages}
                 </span>
                 
                 <button
                   onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                   disabled={currentPage === totalPages}
-                  className="px-3 py-1 border border-slate-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-100"
+                  className="px-3 py-1 border border-theme-border rounded-theme text-sm text-theme-text-primary disabled:opacity-50 disabled:cursor-not-allowed hover:bg-theme-surface"
                 >
                   Siguiente
                 </button>

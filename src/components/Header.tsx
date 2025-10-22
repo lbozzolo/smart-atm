@@ -1,6 +1,7 @@
 'use client'
 
 import { useAuth } from '@/components/ProtectedRoute'
+import ThemeToggle from '@/components/ThemeToggle'
 
 interface HeaderProps {
   sidebarCollapsed: boolean
@@ -13,7 +14,7 @@ export default function Header({ sidebarCollapsed, currentPage = 'Dashboard', pa
 
   return (
     <header className={`
-      fixed top-0 right-0 h-16 bg-white/80 backdrop-blur-xl border-b border-slate-200/50 
+      fixed top-0 right-0 h-16 bg-theme-surface/80 backdrop-blur-xl border-b border-theme-border/50 
       transition-all duration-300 z-20 shadow-sm
       ${sidebarCollapsed ? 'left-20' : 'left-64'}
     `}>
@@ -21,30 +22,33 @@ export default function Header({ sidebarCollapsed, currentPage = 'Dashboard', pa
         
         {/* Breadcrumb & Title */}
         <div className="flex items-center space-x-4">
-          <div className="text-slate-600 text-sm">
-            <span className="text-slate-400">Smart ATM</span>
+          <div className="text-sm text-theme-text-secondary">
+            <span className="text-theme-text-muted">Smart ATM</span>
             <span className="mx-2">/</span>
-            <span className="text-slate-700 font-medium">{currentPage}</span>
+            <span className="text-theme-text-secondary font-medium">{currentPage}</span>
             {pageTitle && currentPage !== pageTitle && (
               <>
                 <span className="mx-2">/</span>
-                <span className="text-slate-800 font-semibold">{pageTitle}</span>
+                <span className="text-theme-text-primary font-semibold">{pageTitle}</span>
               </>
             )}
           </div>
         </div>
 
-        {/* User Info & Logout */}
+        {/* User Info & Controls */}
         <div className="flex items-center space-x-4">
+          {/* Theme Toggle */}
+          <ThemeToggle />
+          
           {user && (
             <>
-              <div className="text-sm text-slate-600">
-                <span className="text-slate-400">Usuario:</span>
-                <span className="ml-2 font-medium text-slate-700">{user.email}</span>
+              <div className="text-sm text-theme-text-secondary">
+                <span className="text-theme-text-muted">Usuario:</span>
+                <span className="ml-2 font-medium text-theme-text-primary">{user.email}</span>
               </div>
               <button
                 onClick={signOut}
-                className="flex items-center space-x-2 px-3 py-1.5 text-sm text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
+                className="flex items-center space-x-2 px-3 py-1.5 text-sm text-theme-text-secondary hover:text-theme-error hover:bg-theme-error/10 rounded-theme transition-colors duration-200"
                 title="Cerrar Sesión"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

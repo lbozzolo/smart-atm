@@ -45,19 +45,24 @@ export default function CallbacksModal({ isOpen, onClose, callId }: CallbacksMod
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
-      <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden border border-white/20 animate-in slide-in-from-bottom duration-300">
-        <div className="flex justify-between items-center p-8 border-b border-slate-200/50 bg-gradient-to-r from-slate-50/80 to-white/80">
+      <div className="bg-theme-surface backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden border border-theme-border animate-in slide-in-from-bottom duration-300">
+        <div className="flex justify-between items-center p-8 border-b border-theme-border bg-theme-surface-hover">
           <div>
-            <h2 className="text-2xl font-bold text-slate-800 mb-1">
-              📞 Callbacks
-            </h2>
-            <p className="text-slate-600 font-mono text-sm">
+            <div className="flex items-center space-x-3 mb-1">
+              <svg className="w-6 h-6 text-theme-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+              <h2 className="text-2xl font-bold text-theme-text-primary">
+                Callbacks
+              </h2>
+            </div>
+            <p className="text-theme-text-secondary font-mono text-sm">
               Llamada ID: {callId}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all duration-200"
+            className="w-10 h-10 flex items-center justify-center text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-primary/10 rounded-full transition-all duration-200"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -82,7 +87,11 @@ export default function CallbacksModal({ isOpen, onClose, callId }: CallbacksMod
             </div>
           ) : callbacks.length === 0 ? (
             <div className="bg-slate-50/80 border border-slate-200/60 rounded-2xl p-12 text-center backdrop-blur-sm">
-              <div className="text-slate-400 text-6xl mb-4">📞</div>
+              <div className="flex justify-center mb-4">
+                <svg className="w-16 h-16 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                </svg>
+              </div>
               <h3 className="text-slate-700 font-semibold text-lg mb-2">No hay callbacks</h3>
               <p className="text-slate-600">No se encontraron callbacks registrados para esta llamada</p>
             </div>

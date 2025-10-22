@@ -13,7 +13,7 @@ export default function Home() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
+      <div className="min-h-screen bg-theme-background">
         {/* Sidebar */}
         <Sidebar activeItem="calls" />
         
@@ -31,15 +31,13 @@ export default function Home() {
             <div className="mb-8">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-3xl font-bold text-slate-800 mb-2">
+                  <h1 className="text-3xl font-bold text-theme-text-primary mb-2">
                     Dashboard de Llamadas
                   </h1>
-                  <p className="text-slate-600">
+                  <p className="text-theme-text-secondary">
                     Gestiona y analiza todas las llamadas del sistema Smart ATM
                   </p>
                 </div>
-                
-
               </div>
             </div>
 
@@ -50,14 +48,14 @@ export default function Home() {
             <ModernCallsTable />
           
           {/* Footer */}
-          <footer className="text-center py-8 border-t border-slate-200 bg-white/50 rounded-2xl backdrop-blur-sm">
-            <div className="flex items-center justify-center space-x-6 text-slate-500">
+          <footer className="text-center py-8 border-t border-theme-border bg-theme-surface rounded-theme-lg">
+            <div className="flex items-center justify-center space-x-6 text-theme-text-muted">
               <span>© 2025 Smart ATM</span>
               <span>•</span>
               <span>Sistema de Gestión de Llamadas</span>
               <span>•</span>
-              <span className="text-green-500 flex items-center">
-                <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
+              <span className="text-theme-success flex items-center">
+                <div className="w-2 h-2 bg-theme-success rounded-full mr-2 animate-pulse"></div>
                 Sistema Operativo
               </span>
             </div>

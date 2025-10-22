@@ -37,6 +37,7 @@ export interface Call {
   other_locations?: string
   from_number?: string
   to_number?: string
+  created_at?: string
 }
 
 // Tipo extendido para llamadas con información de PCA
@@ -165,6 +166,8 @@ export interface PaginationParams {
   filters?: {
     hasPCA?: boolean
     disposition?: string
+    dateFrom?: string
+    dateTo?: string
   }
   sortBy?: string
   sortOrder?: 'asc' | 'desc'
@@ -190,22 +193,49 @@ export async function getCallsWithPagination(params: PaginationParams): Promise<
 
     // Aplicar filtros de búsqueda
     if (params.search) {
-      query = query.or(`business_name.ilike.%${params.search}%,owner_name.ilike.%${params.search}%,owner_phone.ilike.%${params.search}%`)
+      query = query.or(`business_name.ilike.%${params.search}%,owner_name.ilike.%${params.search}%,owner_phone.ilike.%${params.search}%,owner_email.ilike.%${params.search}%,address_street.ilike.%${params.search}%,call_id.ilike.%${params.search}%`)
     }
 
-    // Aplicar filtros adicionales
-    if (params.filters?.disposition) {
-      query = query.eq('disposition', params.filters.disposition)
+    // Aplicar filtros de fecha
+    if (params.filters?.dateFrom) {
+      query = query.gte('created_at', params.filters.dateFrom)
+    }
+    if (params.filters?.dateTo) {
+      // Agregar 23:59:59 al final del día para incluir todo el día
+      const endOfDay = `${params.filters.dateTo}T23:59:59.999Z`
+      query = query.lte('created_at', endOfDay)
     }
 
-    // Aplicar ordenamiento
-    const sortBy = params.sortBy || 'call_id'
-    const sortOrder = params.sortOrder === 'asc' ? { ascending: true } : { ascending: false }
-    query = query.order(sortBy, sortOrder)
+    // NOTA: El filtro de disposition se aplicará después de combinar datos
+    // porque disposition puede venir de calls, pca, o callbacks
 
-    // Aplicar paginación
-    const offset = (params.page - 1) * params.limit
-    query = query.range(offset, offset + params.limit - 1)
+    // NOTA: Para disposition, no podemos ordenar aquí porque el valor final viene de múltiples tablas
+    // En su lugar, ordenaremos en memoria después de combinar los datos
+    const shouldSortByDisposition = params.sortBy === 'disposition'
+    
+    // Determinar si necesitamos aplicar filtros post-query
+    const needsPostQueryFiltering = params.filters?.disposition || shouldSortByDisposition
+    
+    // Aplicar ordenamiento (excepto para disposition)
+    if (!shouldSortByDisposition) {
+      const sortBy = params.sortBy || 'call_id'
+      const sortOrder = params.sortOrder === 'asc' ? { ascending: true } : { ascending: false }
+      query = query.order(sortBy, sortOrder)
+    } else {
+      // Para disposition, usar un ordenamiento temporal por call_id
+      query = query.order('call_id', { ascending: false })
+    }
+
+    // Determinar si necesitamos aplicar filtros post-query
+    
+    // Si necesitamos filtros post-query, obtener TODOS los registros primero
+    if (needsPostQueryFiltering) {
+      // No aplicar paginación aún, la aplicaremos después del filtrado
+    } else {
+      // Aplicar paginación normal para otros casos
+      const offset = (params.page - 1) * params.limit
+      query = query.range(offset, offset + params.limit - 1)
+    }
 
     const { data: calls, count, error: callsError } = await query
 
@@ -285,13 +315,43 @@ export async function getCallsWithPagination(params: PaginationParams): Promise<
       filteredCalls = filteredCalls.filter(call => call.hasPCA === params.filters!.hasPCA)
     }
 
-    const totalPages = Math.ceil((count || 0) / params.limit)
+    // Filtrar por disposition (busca en disposition final combinado)
+    if (params.filters?.disposition) {
+      filteredCalls = filteredCalls.filter(call => 
+        call.disposition?.toLowerCase() === params.filters!.disposition!.toLowerCase()
+      )
+    }
 
-    console.log(`✅ Devolviendo ${filteredCalls.length} llamadas (página ${params.page}/${totalPages}) de ${count} total`)
+    // Calcular el total correcto después de aplicar filtros
+    const finalTotal = filteredCalls.length
+    
+    // Si el ordenamiento es por disposition, hacerlo aquí después de combinar los datos
+    if (params.sortBy === 'disposition') {
+      filteredCalls.sort((a, b) => {
+        const dispA = a.disposition || ''
+        const dispB = b.disposition || ''
+        
+        if (params.sortOrder === 'asc') {
+          return dispA.localeCompare(dispB)
+        } else {
+          return dispB.localeCompare(dispA)
+        }
+      })
+    }
+    
+    // Aplicar paginación manual si se necesitó filtrado post-query
+    if (needsPostQueryFiltering) {
+      const offset = (params.page - 1) * params.limit
+      filteredCalls = filteredCalls.slice(offset, offset + params.limit)
+    }
+
+    const totalPages = Math.ceil(finalTotal / params.limit)
+
+    console.log(`✅ Devolviendo ${filteredCalls.length} llamadas (página ${params.page}/${totalPages}) de ${finalTotal} total`)
     
     return {
       data: filteredCalls,
-      total: count || 0,
+      total: finalTotal,
       page: params.page,
       limit: params.limit,
       totalPages

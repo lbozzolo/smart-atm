@@ -14,14 +14,22 @@ export default function Sidebar({ activeItem = 'calls' }: SidebarProps) {
     {
       id: 'calls',
       name: 'Llamadas',
-      icon: '📞',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+        </svg>
+      ),
       href: '/',
       description: 'Gestión de llamadas'
     },
     {
       id: 'leads',
       name: 'Leads',
-      icon: '👥',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+        </svg>
+      ),
       href: '/leads',
       description: 'Prospectos y seguimiento'
     }
@@ -29,27 +37,27 @@ export default function Sidebar({ activeItem = 'calls' }: SidebarProps) {
 
   return (
     <div className={`
-      fixed left-0 top-0 h-full bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 
-      border-r border-slate-700/50 backdrop-blur-xl transition-all duration-300 ease-in-out z-30
+      fixed left-0 top-0 h-full bg-theme-surface
+      border-r border-theme-border backdrop-blur-xl transition-all duration-300 ease-in-out z-30
       ${isCollapsed ? 'w-20' : 'w-64'}
     `}>
       {/* Header del Sidebar */}
-      <div className="flex items-center justify-between p-6 border-b border-slate-700/30">
+      <div className="flex items-center justify-between p-6 border-b border-theme-border/30">
         <div className={`flex items-center space-x-3 ${isCollapsed ? 'justify-center' : ''}`}>
-          <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-theme-primary rounded-theme flex items-center justify-center shadow-lg">
             <span className="text-white font-bold text-lg">SA</span>
           </div>
           {!isCollapsed && (
             <div>
-              <h1 className="text-white font-bold text-xl">Smart ATM</h1>
-              <p className="text-slate-400 text-xs">Call Management</p>
+              <h1 className="text-theme-text-primary font-bold text-xl">Smart ATM</h1>
+              <p className="text-theme-text-muted text-xs">Call Management</p>
             </div>
           )}
         </div>
         
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-700/30 transition-colors"
+          className="text-theme-text-muted hover:text-theme-text-primary p-1 rounded-lg hover:bg-theme-surface-hover transition-colors"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
@@ -66,16 +74,16 @@ export default function Sidebar({ activeItem = 'calls' }: SidebarProps) {
               key={item.id}
               href={item.href}
               className={`
-                flex items-center space-x-3 p-3 rounded-xl transition-all duration-200 group
+                flex items-center space-x-3 p-3 rounded-theme transition-all duration-200 group
                 ${activeItem === item.id 
-                  ? 'bg-gradient-to-r from-blue-500/20 to-purple-600/20 border border-blue-500/30 text-white shadow-lg' 
-                  : 'text-slate-300 hover:text-white hover:bg-slate-700/30'
+                  ? 'bg-theme-primary text-white shadow-lg' 
+                  : 'text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-surface-hover'
                 }
               `}
             >
-              <span className={`text-xl ${activeItem === item.id ? 'scale-110' : 'group-hover:scale-110'} transition-transform`}>
+              <div className={`${activeItem === item.id ? 'scale-110' : 'group-hover:scale-110'} transition-transform`}>
                 {item.icon}
-              </span>
+              </div>
               
               {!isCollapsed && (
                 <div className="flex-1">
@@ -85,7 +93,7 @@ export default function Sidebar({ activeItem = 'calls' }: SidebarProps) {
               )}
               
               {activeItem === item.id && !isCollapsed && (
-                <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
               )}
             </Link>
           ))}

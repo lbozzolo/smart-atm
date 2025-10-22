@@ -1,0 +1,142 @@
+/* Clases utilitarias para el sistema de temas */
+
+/* Colores de fondo */
+.bg-theme-primary { background-color: var(--color-primary); }
+.bg-theme-primary-dark { background-color: var(--color-primaryDark); }
+.bg-theme-primary-light { background-color: var(--color-primaryLight); }
+.bg-theme-secondary { background-color: var(--color-secondary); }
+.bg-theme-secondary-dark { background-color: var(--color-secondaryDark); }
+.bg-theme-secondary-light { background-color: var(--color-secondaryLight); }
+.bg-theme-accent { background-color: var(--color-accent); }
+.bg-theme-accent-dark { background-color: var(--color-accentDark); }
+.bg-theme-accent-light { background-color: var(--color-accentLight); }
+.bg-theme-success { background-color: var(--color-success); }
+.bg-theme-warning { background-color: var(--color-warning); }
+.bg-theme-error { background-color: var(--color-error); }
+.bg-theme-background { background-color: var(--color-background); }
+.bg-theme-surface { background-color: var(--color-surface); }
+.bg-theme-surface-hover { background-color: var(--color-surfaceHover); }
+
+/* Colores de texto */
+.text-theme-primary { color: var(--color-primary); }
+.text-theme-primary-dark { color: var(--color-primaryDark); }
+.text-theme-primary-light { color: var(--color-primaryLight); }
+.text-theme-secondary { color: var(--color-secondary); }
+.text-theme-secondary-dark { color: var(--color-secondaryDark); }
+.text-theme-secondary-light { color: var(--color-secondaryLight); }
+.text-theme-accent { color: var(--color-accent); }
+.text-theme-accent-dark { color: var(--color-accentDark); }
+.text-theme-accent-light { color: var(--color-accentLight); }
+.text-theme-success { color: var(--color-success); }
+.text-theme-warning { color: var(--color-warning); }
+.text-theme-error { color: var(--color-error); }
+.text-theme-text-primary { color: var(--color-textPrimary); }
+.text-theme-text-secondary { color: var(--color-textSecondary); }
+.text-theme-text-muted { color: var(--color-textMuted); }
+
+/* Colores de borde */
+.border-theme-primary { border-color: var(--color-primary); }
+.border-theme-secondary { border-color: var(--color-secondary); }
+.border-theme-accent { border-color: var(--color-accent); }
+.border-theme-success { border-color: var(--color-success); }
+.border-theme-warning { border-color: var(--color-warning); }
+.border-theme-error { border-color: var(--color-error); }
+.border-theme-border { border-color: var(--color-border); }
+.border-theme-border-hover { border-color: var(--color-borderHover); }
+
+/* Colores planos sin degradados */
+.bg-theme-flat-primary {
+  background-color: var(--color-primary);
+}
+
+.bg-theme-flat-secondary {
+  background-color: var(--color-secondaryDark);
+}
+
+.bg-theme-flat-accent {
+  background-color: var(--color-accent);
+}
+
+.bg-theme-flat-surface {
+  background-color: var(--color-surface);
+}
+
+/* Estados hover con transiciones */
+.hover-theme-primary:hover { 
+  background-color: var(--color-primary); 
+  transition: background-color 0.2s ease;
+}
+
+.hover-theme-surface:hover { 
+  background-color: var(--color-surfaceHover); 
+  transition: background-color 0.2s ease;
+}
+
+.hover-theme-border:hover { 
+  border-color: var(--color-borderHover); 
+  transition: border-color 0.2s ease;
+}
+
+/* Sombras planas temáticas */
+.shadow-theme-primary {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+              0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.shadow-theme-accent {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+              0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.shadow-theme-soft {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1),
+              0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+
+/* Utilidades de transparencia con colores planos */
+.bg-theme-primary\/10 { background-color: color-mix(in srgb, var(--color-primary) 10%, transparent); }
+.bg-theme-primary\/20 { background-color: color-mix(in srgb, var(--color-primary) 20%, transparent); }
+.bg-theme-accent\/10 { background-color: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.bg-theme-accent\/20 { background-color: color-mix(in srgb, var(--color-accent) 20%, transparent); }
+
+/* Bordes con esquinas redondeadas - 10px por defecto */
+.rounded-theme { border-radius: 10px; }
+.rounded-theme-sm { border-radius: 6px; }
+.rounded-theme-lg { border-radius: 12px; }
+.rounded-theme-xl { border-radius: 16px; }
+
+/* Botones con estilos planos */
+.btn-theme-primary {
+  background-color: var(--color-primary);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+  transition: background-color 0.2s ease;
+}
+
+.btn-theme-primary:hover {
+  background-color: var(--color-primaryDark);
+}
+
+.btn-theme-secondary {
+  background-color: var(--color-surface);
+  color: var(--color-textPrimary);
+  border: 1px solid var(--color-border);
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+.btn-theme-secondary:hover {
+  background-color: var(--color-surfaceHover);
+  border-color: var(--color-borderHover);
+}
+
+/* Responsive hover states */
+@media (hover: hover) {
+  .hover\:bg-theme-primary:hover { background-color: var(--color-primary); }
+  .hover\:bg-theme-surface-hover:hover { background-color: var(--color-surfaceHover); }
+  .hover\:text-theme-primary:hover { color: var(--color-primary); }
+  .hover\:border-theme-border-hover:hover { border-color: var(--color-borderHover); }
+}
