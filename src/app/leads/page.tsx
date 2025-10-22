@@ -25,7 +25,7 @@ export default function LeadsPage() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
+      <div className="min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
       {/* Sidebar */}
       <Sidebar activeItem="leads" />
       

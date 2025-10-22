@@ -678,91 +678,150 @@ export interface Lead {
 
 // Función para obtener todos los leads (números únicos con su información más reciente)
 export async function getLeads(): Promise<Lead[]> {
-  console.log('📞 Obteniendo todos los leads...')
+  console.log('📞 Obteniendo todos los leads (optimizado)...')
   
-  // Primero obtenemos todas las calls
-  const { data: callsData, error: callsError } = await supabase
-    .from('calls')
-    .select('*')
-    .not('to_number', 'is', null)
-    .order('call_id', { ascending: false })
-  
-  if (callsError) {
-    console.error('❌ Error obteniendo calls:', callsError)
-    throw callsError
-  }
-  
-  if (!callsData) return []
-  
-  // Obtener todas las dispositions del PCA para los call_ids
-  const callIds = callsData.map(call => call.call_id)
-  const { data: pcaData } = await supabase
-    .from('pca')
-    .select('call_id, disposition')
-    .in('call_id', callIds)
-  
-  // Crear un mapa para acceso rápido a las dispositions del PCA
-  const pcaMap = new Map()
-  if (pcaData) {
-    pcaData.forEach(pca => {
-      pcaMap.set(pca.call_id, pca.disposition)
-    })
-  }
-  
-  const data = callsData
-  
-  // Agrupamos por to_number y tomamos la información más reciente
-  const leadsMap = new Map<string, Lead>()
-  
-  for (const call of data) {
-    if (!call.to_number) continue
+  try {
+    // Consulta optimizada: solo campos necesarios de calls
+    const { data: callsData, error: callsError } = await supabase
+      .from('calls')
+      .select(`
+        call_id,
+        to_number,
+        business_name,
+        owner_name,
+        owner_email,
+        location_type,
+        address_street,
+        address_city,
+        address_state,
+        address_zip,
+        disposition,
+        agreed_amount
+      `)
+      .not('to_number', 'is', null)
+      .order('call_id', { ascending: false })
+      .limit(1000) // Límite para evitar consultas masivas
     
-    const existingLead = leadsMap.get(call.to_number)
-    
-    if (!existingLead) {
-      // Primera vez que vemos este número
-      leadsMap.set(call.to_number, {
-        phone_number: call.to_number,
-        business_name: call.business_name,
-        owner_name: call.owner_name,
-        owner_email: call.owner_email,
-        location_type: call.location_type,
-        address_street: call.address_street,
-        address_city: call.address_city,
-        address_state: call.address_state,
-        address_zip: call.address_zip,
-        total_calls: 1,
-        last_call_date: call.call_id, // Usando call_id como proxy de fecha
-        last_disposition: pcaMap.get(call.call_id) || call.disposition,
-        agreed_amount: call.agreed_amount
+    if (callsError) {
+      console.error('❌ Error obteniendo calls:', callsError)
+      throw callsError
+    }
+
+    // Consulta optimizada para PCA - solo disposition
+    const { data: pcaData, error: pcaError } = await supabase
+      .from('pca')
+      .select('call_id, disposition')
+      .not('disposition', 'is', null)
+
+    if (pcaError) {
+      console.error('❌ Error obteniendo pca:', pcaError)
+      // No lanzamos error, continuamos sin pca
+    }
+
+    // Consulta optimizada para callbacks - solo campos necesarios
+    const { data: callbacksData, error: callbacksError } = await supabase
+      .from('callbacks')
+      .select('to_number, disposition, created_at')
+      .not('to_number', 'is', null)
+      .not('disposition', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(500) // Límite para callbacks
+
+    if (callbacksError) {
+      console.error('❌ Error obteniendo callbacks:', callbacksError)
+      // No lanzamos error, continuamos sin callbacks
+    }
+
+    if (!callsData) return []
+
+    // Crear mapa de PCA por call_id
+    const pcaMap = new Map()
+    if (pcaData) {
+      pcaData.forEach(pca => {
+        pcaMap.set(pca.call_id, pca)
       })
-    } else {
-      // Actualizamos el conteo
-      existingLead.total_calls++
+    }
+
+    // Crear mapa de callbacks por teléfono (solo el más reciente por número)
+    const callbacksMap = new Map()
+    if (callbacksData) {
+      callbacksData.forEach(callback => {
+        if (!callbacksMap.has(callback.to_number)) {
+          callbacksMap.set(callback.to_number, callback)
+        }
+      })
+    }
+
+    // Agrupamos por to_number de forma más eficiente
+    const leadsMap = new Map<string, Lead>()
+    
+    for (const call of callsData) {
+      if (!call.to_number) continue
       
-      // Si esta llamada es más reciente (call_id mayor), actualizamos la info
-      if (call.call_id > existingLead.last_call_date) {
-        existingLead.business_name = call.business_name || existingLead.business_name
-        existingLead.owner_name = call.owner_name || existingLead.owner_name
-        existingLead.owner_email = call.owner_email || existingLead.owner_email
-        existingLead.location_type = call.location_type || existingLead.location_type
-        existingLead.address_street = call.address_street || existingLead.address_street
-        existingLead.address_city = call.address_city || existingLead.address_city
-        existingLead.address_state = call.address_state || existingLead.address_state
-        existingLead.address_zip = call.address_zip || existingLead.address_zip
-        existingLead.last_call_date = call.call_id
-        existingLead.last_disposition = pcaMap.get(call.call_id) || call.disposition
-        existingLead.agreed_amount = call.agreed_amount || existingLead.agreed_amount
+      // Disposition con prioridad: pca > calls > callback
+      const pcaInfo = pcaMap.get(call.call_id)
+      const disposition = pcaInfo?.disposition || call.disposition
+      
+      const existingLead = leadsMap.get(call.to_number)
+      
+      if (!existingLead) {
+        // Primera vez que vemos este número
+        const callback = callbacksMap.get(call.to_number)
+        
+        leadsMap.set(call.to_number, {
+          phone_number: call.to_number,
+          business_name: call.business_name,
+          owner_name: call.owner_name,
+          owner_email: call.owner_email,
+          location_type: call.location_type,
+          address_street: call.address_street,
+          address_city: call.address_city,
+          address_state: call.address_state,
+          address_zip: call.address_zip,
+          total_calls: 1,
+          last_call_date: call.call_id,
+          last_disposition: disposition || callback?.disposition || null,
+          agreed_amount: call.agreed_amount
+        })
+      } else {
+        // Actualizamos el conteo
+        existingLead.total_calls++
+        
+        // Si esta llamada es más reciente (call_id mayor), actualizamos
+        if (call.call_id > existingLead.last_call_date) {
+          existingLead.business_name = call.business_name || existingLead.business_name
+          existingLead.owner_name = call.owner_name || existingLead.owner_name
+          existingLead.owner_email = call.owner_email || existingLead.owner_email
+          existingLead.location_type = call.location_type || existingLead.location_type
+          existingLead.address_street = call.address_street || existingLead.address_street
+          existingLead.address_city = call.address_city || existingLead.address_city
+          existingLead.address_state = call.address_state || existingLead.address_state
+          existingLead.address_zip = call.address_zip || existingLead.address_zip
+          existingLead.last_call_date = call.call_id
+          existingLead.last_disposition = disposition || existingLead.last_disposition
+          existingLead.agreed_amount = call.agreed_amount || existingLead.agreed_amount
+        }
       }
     }
-  }
-  
-  const leads = Array.from(leadsMap.values())
-  console.log(`✅ Encontrados ${leads.length} leads únicos`)
-  return leads
-}
 
-// Interfaz para interacciones combinadas (calls + callbacks)
+    // Post-procesamiento: aplicar callbacks solo si no hay disposition válido
+    callbacksMap.forEach((callback, phoneNumber) => {
+      const lead = leadsMap.get(phoneNumber)
+      if (lead && (!lead.last_disposition || lead.last_disposition === 'Sin disposition')) {
+        lead.last_disposition = callback.disposition
+        console.log(`📋 Aplicando callback disposition: ${phoneNumber} → ${callback.disposition}`)
+      }
+    })
+
+    const leads = Array.from(leadsMap.values())
+    console.log(`✅ Encontrados ${leads.length} leads únicos (optimizado)`)
+    return leads
+    
+  } catch (error) {
+    console.error('❌ Error en getLeads optimizado:', error)
+    throw error
+  }
+}// Interfaz para interacciones combinadas (calls + callbacks)
 export interface CallInteraction {
   type: 'call' | 'callback'
   call_id?: string

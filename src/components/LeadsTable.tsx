@@ -64,10 +64,19 @@ export default function LeadsTable({ onCallSelect }: LeadsTableProps) {
   }
 
   const getDispositionBadge = (disposition?: string) => {
-    if (!disposition) return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Sin disposition</span>
+    if (!disposition) {
+      return (
+        <span 
+          className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium"
+          style={{ backgroundColor: 'var(--color-surfaceHover)', color: 'var(--color-textMuted)' }}
+        >
+          Sin disposition
+        </span>
+      )
+    }
 
     const baseClasses = "inline-flex items-center px-2 py-1 rounded-full text-xs font-medium"
-    let colorClasses = ""
+    let styles = {}
     
     switch (disposition?.toLowerCase()) {
       // Dispositions positivos (verde)
@@ -77,50 +86,50 @@ export default function LeadsTable({ onCallSelect }: LeadsTableProps) {
       case 'success':
       case 'sale':
       case 'converted':
-        colorClasses = 'bg-green-100 text-green-800'
+        styles = { backgroundColor: 'var(--color-success)', color: 'white', opacity: 0.9 }
         break
       
-      // Dispositions de seguimiento (azul)
+      // Dispositions de seguimiento (azul/primary)
       case 'callback':
       case 'follow_up':
       case 'scheduled':
       case 'reschedule':
       case 'voicemail':
-        colorClasses = 'bg-blue-100 text-blue-800'
+        styles = { backgroundColor: 'var(--color-primaryLight)', color: 'var(--color-primaryDark)' }
         break
       
-      // Dispositions de no contacto (amarillo)
+      // Dispositions de no contacto (warning)
       case 'owner_not_present':
       case 'no_answer':
       case 'busy':
       case 'unavailable':
-        colorClasses = 'bg-yellow-100 text-yellow-800'
+        styles = { backgroundColor: 'var(--color-warning)', color: 'white', opacity: 0.9 }
         break
       
-      // Dispositions negativos (rojo)
+      // Dispositions negativos (error)
       case 'not_interested':
       case 'failed':
       case 'failure':
       case 'rejected':
       case 'wrong_number':
-        colorClasses = 'bg-red-100 text-red-800'
+        styles = { backgroundColor: 'var(--color-error)', color: 'white', opacity: 0.9 }
         break
       
-      // Dispositions pendientes (púrpura)
+      // Dispositions pendientes (accent)
       case 'pending':
       case 'in_progress':
       case 'processing':
-        colorClasses = 'bg-purple-100 text-purple-800'
+        styles = { backgroundColor: 'var(--color-accentLight)', color: 'var(--color-accentDark)' }
         break
       
       // Default (gris)
       default:
-        colorClasses = 'bg-slate-100 text-slate-600'
+        styles = { backgroundColor: 'var(--color-surfaceHover)', color: 'var(--color-textMuted)' }
         break
     }
 
     return (
-      <span className={`${baseClasses} ${colorClasses}`}>
+      <span className={baseClasses} style={styles}>
         {disposition}
       </span>
     )
@@ -129,10 +138,10 @@ export default function LeadsTable({ onCallSelect }: LeadsTableProps) {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-8 border border-white/20 shadow-lg">
+        <div className="rounded-xl p-8 border shadow-sm" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
           <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <p className="ml-4 text-slate-600">Cargando leads...</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: 'var(--color-primary)' }}></div>
+            <p className="ml-4" style={{ color: 'var(--color-textSecondary)' }}>Cargando leads...</p>
           </div>
         </div>
       </div>
@@ -142,12 +151,13 @@ export default function LeadsTable({ onCallSelect }: LeadsTableProps) {
   if (error) {
     return (
       <div className="space-y-6">
-        <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-8 border border-white/20 shadow-lg">
+        <div className="rounded-xl p-8 border shadow-sm" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
           <div className="text-center">
-            <p className="text-red-600 mb-4">{error}</p>
+            <p className="mb-4" style={{ color: 'var(--color-error)' }}>{error}</p>
             <button 
               onClick={loadLeads}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="px-4 py-2 text-white rounded-lg hover:opacity-90 transition-colors"
+              style={{ backgroundColor: 'var(--color-primary)' }}
             >
               Reintentar
             </button>
@@ -160,98 +170,102 @@ export default function LeadsTable({ onCallSelect }: LeadsTableProps) {
   return (
     <div className="space-y-6">
       {/* Header Section */}
-      <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 border border-white/20 shadow-lg">
+      <div className="rounded-xl p-6 border shadow-sm" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-semibold text-slate-800">Leads</h2>
-            <p className="text-slate-600 mt-1">Gestiona los prospectos y su historial de llamadas</p>
+            <h2 className="text-2xl font-semibold" style={{ color: 'var(--color-textPrimary)' }}>Leads</h2>
+            <p className="mt-1" style={{ color: 'var(--color-textSecondary)' }}>Gestiona los prospectos y su historial de llamadas</p>
           </div>
-          <div className="text-sm text-slate-600">
+          <div className="text-sm" style={{ color: 'var(--color-textSecondary)' }}>
             Total: {leads.length} leads
           </div>
         </div>
       </div>
 
       {/* Table Section */}
-      <div className="bg-white/70 backdrop-blur-sm rounded-2xl border border-white/20 shadow-lg overflow-hidden">
+      <div className="rounded-xl border shadow-sm overflow-hidden" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y" style={{ borderColor: 'var(--color-border)' }}>
+            <thead style={{ backgroundColor: 'var(--color-surfaceHover)' }}>
               <tr>
-                <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-textSecondary)' }}>
                   
                 </th>
-                <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-textSecondary)' }}>
                   Teléfono
                 </th>
-                <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-textSecondary)' }}>
                   Cliente
                 </th>
-                <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-textSecondary)' }}>
                   Negocio
                 </th>
-                <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-textSecondary)' }}>
                   Tipo
                 </th>
-                <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-textSecondary)' }}>
                   Total Llamadas
                 </th>
-                <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-textSecondary)' }}>
                   Disposition
                 </th>
-                <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-textSecondary)' }}>
                   Monto
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="divide-y" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
               {leads.map((lead) => (
                 <>
                   <tr 
                     key={lead.phone_number} 
-                    className="hover:bg-gray-50 cursor-pointer"
+                    className="cursor-pointer transition-colors duration-150"
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-surfaceHover)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                     onClick={() => toggleLeadExpansion(lead.phone_number)}
                   >
-                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: 'var(--color-textPrimary)' }}>
                       {expandedLeads.has(lead.phone_number) ? (
-                        <span className="inline-block w-5 h-5 text-gray-400">▼</span>
+                        <span className="inline-block w-5 h-5 transition-transform duration-200" style={{ color: 'var(--color-textMuted)' }}>▼</span>
                       ) : (
-                        <span className="inline-block w-5 h-5 text-gray-400">▶</span>
+                        <span className="inline-block w-5 h-5 transition-transform duration-200" style={{ color: 'var(--color-textMuted)' }}>▶</span>
                       )}
                     </td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono" style={{ color: 'var(--color-textPrimary)' }}>
                       <div className="flex items-center">
-                        <span className="text-gray-400 mr-2">📞</span>
-                        {lead.phone_number}
+                        <svg className="w-4 h-4 mr-2" style={{ color: 'var(--color-primary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                        </svg>
+                        <span className="font-medium">{lead.phone_number}</span>
                       </div>
                     </td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: 'var(--color-textPrimary)' }}>
                       <div>
                         <div className="font-medium">{lead.owner_name || 'N/A'}</div>
-                        <div className="text-gray-500">{lead.owner_email || ''}</div>
+                        <div className="text-xs" style={{ color: 'var(--color-textMuted)' }}>{lead.owner_email || ''}</div>
                       </div>
                     </td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: 'var(--color-textSecondary)' }}>
                       {lead.business_name || 'N/A'}
                     </td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ color: 'var(--color-textSecondary)' }}>
                       {lead.location_type || 'N/A'}
                     </td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium" style={{ backgroundColor: 'var(--color-primaryLight)', color: 'var(--color-primaryDark)' }}>
                         {lead.total_calls}
                       </span>
                     </td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
                       {getDispositionBadge(lead.last_disposition)}
                     </td>
-                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
                       {lead.agreed_amount ? (
-                        <span className="font-semibold text-green-700">
+                        <span className="font-semibold" style={{ color: 'var(--color-success)' }}>
                           ${lead.agreed_amount.toLocaleString()}
                         </span>
                       ) : (
-                        <span className="text-gray-400">N/A</span>
+                        <span style={{ color: 'var(--color-textMuted)' }}>N/A</span>
                       )}
                     </td>
                   </tr>
@@ -259,111 +273,189 @@ export default function LeadsTable({ onCallSelect }: LeadsTableProps) {
                   {/* Fila expandible con historial de llamadas */}
                   {expandedLeads.has(lead.phone_number) && (
                     <tr>
-                      <td colSpan={8} className="px-6 py-4 bg-gray-50">
-                        <div className="space-y-3">
-                          <h4 className="text-sm font-medium text-gray-900">
+                      <td colSpan={8} className="px-6 py-6" style={{ backgroundColor: 'var(--color-surfaceHover)' }}>
+                        <div className="space-y-4">
+                          <h4 className="text-sm font-semibold flex items-center" style={{ color: 'var(--color-textPrimary)' }}>
+                            <svg className="w-3 h-3 mr-2" style={{ color: 'var(--color-primary)' }} fill="currentColor" viewBox="0 0 20 20">
+                              <circle cx="10" cy="10" r="10" />
+                            </svg>
                             Historial de llamadas ({lead.total_calls})
                           </h4>
                           
                           {loadingHistory.has(lead.phone_number) ? (
-                            <div className="flex items-center justify-center py-4">
-                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                              <span className="ml-2 text-sm text-gray-600">Cargando historial...</span>
+                            <div className="flex items-center justify-center py-6">
+                              <div className="animate-spin rounded-full h-6 w-6 border-b-2" style={{ borderColor: 'var(--color-primary)' }}></div>
+                              <span className="ml-3 text-sm" style={{ color: 'var(--color-textSecondary)' }}>Cargando historial...</span>
                             </div>
                           ) : (
-                            <div className="grid gap-3">
-                              {leadHistory.get(lead.phone_number)?.map((interaction, index) => (
-                                <div 
-                                  key={`${interaction.type}-${interaction.call_id || interaction.id}-${index}`}
-                                  className="bg-white border rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition-colors"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    
-                                    if (onCallSelect) {
-                                      if (interaction.type === 'call' && interaction.call_id) {
-                                        // Abrir modal para calls normales
-                                        onCallSelect({
-                                          call_id: interaction.call_id,
-                                          disposition: interaction.disposition,
-                                          business_name: interaction.business_name,
-                                          owner_name: interaction.owner_name,
-                                          agreed_amount: interaction.agreed_amount
-                                        } as Call)
-                                      } else if (interaction.type === 'callback' && interaction.id) {
-                                        // Abrir modal para callbacks usando el id como call_id
-                                        onCallSelect({
-                                          call_id: interaction.id, // Usar id del callback
-                                          disposition: interaction.disposition || 'callback',
-                                          business_name: interaction.business_name, // Ya mapeado en supabase.ts
-                                          owner_name: interaction.business_name, // Para callbacks, business_name contiene el owner
-                                          agreed_amount: interaction.agreed_amount,
-                                          // Información adicional del callback
-                                          callback_time: interaction.callback_time
-                                        } as Call)
-                                      }
+                            <div className="relative">
+                              {/* Timeline */}
+                              <div className="space-y-8">
+                                {leadHistory.get(lead.phone_number)?.map((interaction, index) => {
+                                  const isLast = index === (leadHistory.get(lead.phone_number)?.length || 0) - 1
+                                  
+                                  // Función para obtener fecha formateada
+                                  const getInteractionDate = () => {
+                                    if (interaction.type === 'callback' && interaction.callback_time) {
+                                      return new Date(interaction.callback_time)
+                                    } else if (interaction.created_at) {
+                                      return new Date(interaction.created_at)
                                     }
-                                  }}
-                                >
-                                  {/* Información compacta en una sola línea */}
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      {/* Badge de tipo */}
-                                      {interaction.type === 'callback' ? (
-                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700 border border-orange-200">
-                                          🔄 Callback
-                                        </span>
-                                      ) : (
-                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200">
-                                          📞 Llamada atendida
-                                        </span>
+                                    return new Date()
+                                  }
+
+                                  const interactionDate = getInteractionDate()
+                                  
+                                  return (
+                                    <div 
+                                      key={`${interaction.type}-${interaction.call_id || interaction.id}-${index}`}
+                                      className="relative flex items-start group"
+                                    >
+                                      {/* Timeline Line */}
+                                      {!isLast && (
+                                        <div 
+                                          className="absolute left-6 top-12 w-0.5"
+                                          style={{ 
+                                            backgroundColor: 'var(--color-border)',
+                                            height: 'calc(100% + 2rem)'
+                                          }}
+                                        ></div>
                                       )}
                                       
-                                      {/* Badge de disposition */}
-                                      {getDispositionBadge(interaction.disposition)}
+                                      {/* Timeline Dot */}
+                                      <div className="relative z-10 flex items-center justify-center w-12 h-12 rounded-full border-2 flex-shrink-0"
+                                           style={{ 
+                                             backgroundColor: 'var(--color-surface)',
+                                             borderColor: interaction.type === 'callback' ? 'var(--color-accent)' : 'var(--color-primary)'
+                                           }}>
+                                        {interaction.type === 'callback' ? (
+                                          <svg className="w-5 h-5" style={{ color: 'var(--color-accent)' }} fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                                          </svg>
+                                        ) : (
+                                          <svg className="w-5 h-5" style={{ color: 'var(--color-primary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                                          </svg>
+                                        )}
+                                      </div>
                                       
-                                      {/* Información específica por tipo */}
-                                      {interaction.type === 'callback' ? (
-                                        <>
-                                          <span className="text-sm font-medium text-gray-900">Callback programado</span>
-                                          {interaction.callback_time && (
-                                            <span className="text-xs text-gray-600">
-                                              📅 {new Date(interaction.callback_time).toLocaleDateString('es-ES', { 
+                                      {/* Timeline Content */}
+                                      <div className="ml-4 flex-1 min-w-0">
+                                        <div 
+                                          className="cursor-pointer transition-all duration-200 group-hover:translate-x-1"
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            
+                                            if (onCallSelect) {
+                                              if (interaction.type === 'call' && interaction.call_id) {
+                                                onCallSelect({
+                                                  call_id: interaction.call_id,
+                                                  disposition: interaction.disposition,
+                                                  business_name: interaction.business_name,
+                                                  owner_name: interaction.owner_name,
+                                                  agreed_amount: interaction.agreed_amount
+                                                } as Call)
+                                              } else if (interaction.type === 'callback' && interaction.id) {
+                                                onCallSelect({
+                                                  call_id: interaction.id,
+                                                  disposition: interaction.disposition || 'callback',
+                                                  business_name: interaction.business_name,
+                                                  owner_name: interaction.business_name,
+                                                  agreed_amount: interaction.agreed_amount,
+                                                  callback_time: interaction.callback_time
+                                                } as Call)
+                                              }
+                                            }
+                                          }}
+                                        >
+                                          {/* Fecha y hora principales */}
+                                          <div className="mb-2">
+                                            <time className="text-sm font-semibold" style={{ color: 'var(--color-textPrimary)' }}>
+                                              {interactionDate.toLocaleDateString('es-ES', { 
                                                 day: '2-digit', 
-                                                month: '2-digit', 
-                                                year: 'numeric',
+                                                month: 'short',
+                                                year: 'numeric'
+                                              })} • {interactionDate.toLocaleTimeString('es-ES', {
                                                 hour: '2-digit',
                                                 minute: '2-digit'
                                               })}
+                                            </time>
+                                          </div>
+                                          
+                                          {/* Información principal */}
+                                          <div className="flex items-center gap-2 mb-2">
+                                            <span 
+                                              className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium"
+                                              style={{ 
+                                                backgroundColor: interaction.type === 'callback' ? 'var(--color-accentLight)' : 'var(--color-primaryLight)', 
+                                                color: interaction.type === 'callback' ? 'var(--color-accentDark)' : 'var(--color-primaryDark)'
+                                              }}
+                                            >
+                                              {interaction.type === 'callback' ? 'Callback' : 'Llamada'}
                                             </span>
+                                            
+                                            {getDispositionBadge(interaction.disposition)}
+                                          </div>
+                                          
+                                          {/* Detalles específicos */}
+                                          {interaction.type === 'callback' ? (
+                                            <div className="space-y-1">
+                                              <p className="font-medium text-sm" style={{ color: 'var(--color-textPrimary)' }}>
+                                                Callback programado
+                                              </p>
+                                              {interaction.callback_time && (
+                                                <p className="text-xs flex items-center" style={{ color: 'var(--color-textMuted)' }}>
+                                                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                  </svg>
+                                                  Para: {new Date(interaction.callback_time).toLocaleDateString('es-ES', { 
+                                                    day: '2-digit', 
+                                                    month: '2-digit', 
+                                                    year: 'numeric',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit'
+                                                  })}
+                                                </p>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <div className="space-y-1">
+                                              <p className="font-medium text-sm" style={{ color: 'var(--color-textPrimary)' }}>
+                                                {interaction.business_name || 'Negocio sin nombre'}
+                                              </p>
+                                              {(interaction.address_street || interaction.address_city) && (
+                                                <p className="text-xs flex items-center" style={{ color: 'var(--color-textMuted)' }}>
+                                                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                  </svg>
+                                                  {[
+                                                    interaction.address_street,
+                                                    interaction.address_city,
+                                                    interaction.address_state
+                                                  ].filter(Boolean).join(', ')}
+                                                </p>
+                                              )}
+                                            </div>
                                           )}
-                                        </>
-                                      ) : (
-                                        <>
-                                          <span className="text-sm font-medium text-gray-900">
-                                            {interaction.business_name || 'Negocio sin nombre'}
-                                          </span>
-                                          {(interaction.address_street || interaction.address_city) && (
-                                            <span className="text-xs text-gray-600">
-                                              📍 {[
-                                                interaction.address_street,
-                                                interaction.address_city,
-                                                interaction.address_state
-                                              ].filter(Boolean).join(', ')}
-                                            </span>
+                                          
+                                          {/* Monto acordado */}
+                                          {interaction.agreed_amount && (
+                                            <div className="mt-2">
+                                              <span className="text-xs" style={{ color: 'var(--color-textMuted)' }}>
+                                                Monto acordado: 
+                                              </span>
+                                              <span className="text-sm font-bold ml-1" style={{ color: 'var(--color-success)' }}>
+                                                ${interaction.agreed_amount.toLocaleString()}
+                                              </span>
+                                            </div>
                                           )}
-                                        </>
-                                      )}
-                                    </div>
-                                    
-                                    {/* Monto acordado */}
-                                    {interaction.agreed_amount && (
-                                      <div className="text-sm font-bold text-green-700">
-                                        ${interaction.agreed_amount.toLocaleString()}
+                                        </div>
                                       </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
+                                    </div>
+                                  )
+                                })}
+                              </div>
                             </div>
                           )}
                         </div>
