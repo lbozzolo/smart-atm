@@ -125,7 +125,7 @@ export default function MetricsSection() {
   const totalCalls = calls.length
   
   // Debug: ver qué dispositions realmente existen
-  const uniqueDispositions = [...new Set(calls.map(call => call.disposition).filter(Boolean))]
+  const uniqueDispositions = Array.from(new Set(calls.map(call => call.disposition).filter(Boolean)))
   const dispositionsWithNulls = calls.map(call => call.disposition)
   
   console.log('🔍 Dispositions únicos encontrados:', uniqueDispositions)
