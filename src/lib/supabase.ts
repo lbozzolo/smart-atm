@@ -1000,18 +1000,19 @@ export async function getLeadsWithPagination(params: LeadPaginationParams): Prom
     let allLeads = Array.from(leadsMap.values())
 
     // Aplicar filtros del lado del servidor
-    if (params.filters) {
-      if (params.filters.disposition && params.filters.disposition !== 'all') {
-        allLeads = allLeads.filter(lead => lead.last_disposition === params.filters.disposition)
+    const filters = params.filters
+    if (filters) {
+      if (filters.disposition && filters.disposition !== 'all') {
+        allLeads = allLeads.filter(lead => lead.last_disposition === filters.disposition)
       }
 
-      if (params.filters.minCalls && params.filters.minCalls > 1) {
-        allLeads = allLeads.filter(lead => lead.total_calls >= params.filters.minCalls)
+      if (filters.minCalls && filters.minCalls > 1) {
+        allLeads = allLeads.filter(lead => lead.total_calls >= (filters.minCalls || 1))
       }
 
-      if (params.filters.hasAgreedAmount === 'yes') {
+      if (filters.hasAgreedAmount === 'yes') {
         allLeads = allLeads.filter(lead => lead.agreed_amount && lead.agreed_amount > 0)
-      } else if (params.filters.hasAgreedAmount === 'no') {
+      } else if (filters.hasAgreedAmount === 'no') {
         allLeads = allLeads.filter(lead => !lead.agreed_amount || lead.agreed_amount <= 0)
       }
     }
