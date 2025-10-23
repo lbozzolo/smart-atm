@@ -1,36 +1,134 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Lead, getLeads, getCallHistoryByPhone, Call, CallInteraction } from '@/lib/supabase'
+import { useState, useEffect, useRef } from 'react'
+import { Lead, getLeadsWithPagination, getCallHistoryByPhone, Call, CallInteraction, LeadPaginationParams, PaginatedLeadsResult } from '@/lib/supabase'
 
 interface LeadsTableProps {
   onCallSelect?: (call: Call) => void
 }
 
+// Estados para filtros
+interface TableFilters {
+  search: string
+  disposition: string
+  sortBy: string
+  sortOrder: 'asc' | 'desc'
+  minCalls: number
+  hasAgreedAmount: string // 'all' | 'yes' | 'no'
+}
+
 export default function LeadsTable({ onCallSelect }: LeadsTableProps) {
-  const [leads, setLeads] = useState<Lead[]>([])
+  const [leads, setLeads] = useState<Lead[]>([]) // Leads de la página actual
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedLeads, setExpandedLeads] = useState<Set<string>>(new Set())
   const [leadHistory, setLeadHistory] = useState<Map<string, CallInteraction[]>>(new Map())
   const [loadingHistory, setLoadingHistory] = useState<Set<string>>(new Set())
+  
+  // Estados para paginación del servidor
+  const [totalCount, setTotalCount] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const [hasNextPage, setHasNextPage] = useState(false)
+  const [hasPreviousPage, setHasPreviousPage] = useState(false)
+  
+  // Estados para filtros y búsqueda
+  const [searchInput, setSearchInput] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(25)
+  const debounceTimeoutRef = useRef<NodeJS.Timeout>()
+  
+  const [filters, setFilters] = useState<TableFilters>({
+    search: '',
+    disposition: 'all',
+    sortBy: 'last_call_date',
+    sortOrder: 'desc',
+    minCalls: 1,
+    hasAgreedAmount: 'all'
+  })
 
   useEffect(() => {
     loadLeads()
-  }, [])
+  }, [currentPage, itemsPerPage, filters])
 
   const loadLeads = async () => {
     try {
       setLoading(true)
       setError(null)
-      const data = await getLeads()
-      setLeads(data)
+      
+      const params: LeadPaginationParams = {
+        page: currentPage,
+        limit: itemsPerPage,
+        search: filters.search || undefined,
+        sortBy: filters.sortBy,
+        sortOrder: filters.sortOrder,
+        filters: {
+          disposition: filters.disposition === 'all' ? undefined : filters.disposition,
+          minCalls: filters.minCalls > 1 ? filters.minCalls : undefined,
+          hasAgreedAmount: filters.hasAgreedAmount === 'all' ? undefined : filters.hasAgreedAmount as 'yes' | 'no'
+        }
+      }
+      
+      const result: PaginatedLeadsResult = await getLeadsWithPagination(params)
+      
+      setLeads(result.leads)
+      setTotalCount(result.totalCount)
+      setTotalPages(result.totalPages)
+      setHasNextPage(result.hasNextPage)
+      setHasPreviousPage(result.hasPreviousPage)
+      
     } catch (err) {
       console.error('Error loading leads:', err)
       setError('Error al cargar los leads')
     } finally {
       setLoading(false)
     }
+  }
+
+  // Funciones para manejar filtros
+  const handleFilterChange = (key: keyof TableFilters, value: string | number) => {
+    setFilters(prev => ({ ...prev, [key]: value }))
+    setCurrentPage(1) // Reset página al cambiar filtros
+  }
+
+  const handleSearchInputChange = (value: string) => {
+    setSearchInput(value)
+    
+    // Debounce para búsqueda
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current)
+    }
+    
+    debounceTimeoutRef.current = setTimeout(() => {
+      setFilters(prev => ({ ...prev, search: value }))
+      setCurrentPage(1) // Reset página al buscar
+    }, 300)
+  }
+
+  const handleSearchKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current)
+      }
+      setFilters(prev => ({ ...prev, search: searchInput }))
+      setCurrentPage(1) // Reset página al buscar
+    }
+  }
+
+  const handleSort = (column: string) => {
+    if (filters.sortBy === column) {
+      setFilters(prev => ({ 
+        ...prev, 
+        sortOrder: prev.sortOrder === 'asc' ? 'desc' : 'asc' 
+      }))
+    } else {
+      setFilters(prev => ({ 
+        ...prev, 
+        sortBy: column, 
+        sortOrder: 'desc' 
+      }))
+    }
+    setCurrentPage(1) // Reset página al cambiar ordenamiento
   }
 
   const toggleLeadExpansion = async (phoneNumber: string) => {
@@ -135,6 +233,9 @@ export default function LeadsTable({ onCallSelect }: LeadsTableProps) {
     )
   }
 
+  // Datos para el render
+  const displayedLeads = leads // Los leads ya vienen paginados del servidor
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -169,16 +270,218 @@ export default function LeadsTable({ onCallSelect }: LeadsTableProps) {
 
   return (
     <div className="space-y-6">
-      {/* Header Section */}
-      <div className="rounded-xl p-6 border shadow-sm" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-semibold" style={{ color: 'var(--color-textPrimary)' }}>Leads</h2>
-            <p className="mt-1" style={{ color: 'var(--color-textSecondary)' }}>Gestiona los prospectos y su historial de llamadas</p>
+      {/* Header Section with Controls */}
+      <div className="rounded-xl border shadow-sm" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+        <div className="p-6 border-b" style={{ borderColor: 'var(--color-border)' }}>
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
+            <div className="flex items-center space-x-4">
+              <h2 className="text-xl font-bold" style={{ color: 'var(--color-textPrimary)' }}>Gestión de Leads</h2>
+              <span className="px-3 py-1 rounded-full text-sm font-medium" style={{ backgroundColor: 'var(--color-primary)' + '1A', color: 'var(--color-primary)' }}>
+                {totalCount} leads
+              </span>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Buscar por empresa, propietario, teléfono..."
+                  value={searchInput}
+                  onChange={(e) => handleSearchInputChange(e.target.value)}
+                  onKeyPress={handleSearchKeyPress}
+                  className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-opacity-20 text-sm min-w-[300px]"
+                  style={{ 
+                    backgroundColor: 'var(--color-surface)', 
+                    borderColor: 'var(--color-border)', 
+                    color: 'var(--color-textPrimary)'
+                  } as React.CSSProperties}
+                />
+                {searchInput !== filters.search && (
+                  <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+                    <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: 'var(--color-primary)' }}></div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Botones de ordenamiento rápido */}
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => handleSort('last_call_date')}
+                  className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    filters.sortBy === 'last_call_date' 
+                      ? 'text-white' 
+                      : 'hover:opacity-80'
+                  }`}
+                  style={{ 
+                    backgroundColor: filters.sortBy === 'last_call_date' ? 'var(--color-primary)' : 'var(--color-surfaceHover)',
+                    color: filters.sortBy === 'last_call_date' ? 'white' : 'var(--color-textPrimary)'
+                  }}
+                  title="Ordenar por fecha de última llamada"
+                >
+                  <div className="flex items-center space-x-1">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    {filters.sortBy === 'last_call_date' && (
+                      <span className="text-xs">{filters.sortOrder === 'desc' ? '↓' : '↑'}</span>
+                    )}
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => handleSort('total_calls')}
+                  className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    filters.sortBy === 'total_calls' 
+                      ? 'text-white' 
+                      : 'hover:opacity-80'
+                  }`}
+                  style={{ 
+                    backgroundColor: filters.sortBy === 'total_calls' ? 'var(--color-primary)' : 'var(--color-surfaceHover)',
+                    color: filters.sortBy === 'total_calls' ? 'white' : 'var(--color-textPrimary)'
+                  }}
+                  title="Ordenar por número de llamadas"
+                >
+                  <div className="flex items-center space-x-1">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h4a1 1 0 011 1v2h4a1 1 0 110 2h-1v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6H3a1 1 0 110-2h4z" />
+                    </svg>
+                    {filters.sortBy === 'total_calls' && (
+                      <span className="text-xs">{filters.sortOrder === 'desc' ? '↓' : '↑'}</span>
+                    )}
+                  </div>
+                </button>
+              </div>
+              
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`px-4 py-2 border rounded-lg text-sm font-medium transition-colors ${
+                  showFilters 
+                    ? 'text-white' 
+                    : 'hover:opacity-80'
+                }`}
+                style={{ 
+                  backgroundColor: showFilters ? 'var(--color-primary)' : 'var(--color-surface)',
+                  borderColor: showFilters ? 'var(--color-primary)' : 'var(--color-border)',
+                  color: showFilters ? 'white' : 'var(--color-textPrimary)'
+                }}
+              >
+                🔍 Filtros
+              </button>
+              
+              <select
+                value={itemsPerPage}
+                onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-opacity-20 text-sm"
+                style={{ 
+                  backgroundColor: 'var(--color-surface)', 
+                  borderColor: 'var(--color-border)', 
+                  color: 'var(--color-textPrimary)'
+                }}
+              >
+                <option value={10}>10 por página</option>
+                <option value={25}>25 por página</option>
+                <option value={50}>50 por página</option>
+                <option value={100}>100 por página</option>
+              </select>
+            </div>
           </div>
-          <div className="text-sm" style={{ color: 'var(--color-textSecondary)' }}>
-            Total: {leads.length} leads
-          </div>
+          
+          {/* Advanced Filters */}
+          {showFilters && (
+            <div className="mt-6 pt-6 border-t" style={{ borderColor: 'var(--color-border)' }}>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                <div>
+                  <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-textSecondary)' }}>
+                    Disposition
+                  </label>
+                  <select
+                    value={filters.disposition}
+                    onChange={(e) => handleFilterChange('disposition', e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-opacity-20 text-sm"
+                    style={{ 
+                      backgroundColor: 'var(--color-surface)', 
+                      borderColor: 'var(--color-border)', 
+                      color: 'var(--color-textPrimary)'
+                    }}
+                  >
+                    <option value="all">Todas las disposiciones</option>
+                    <option value="new_lead">New Lead</option>
+                    <option value="possibly_interested">Possibly Interested</option>
+                    <option value="owner_not_present">Owner Not Present</option>
+                    <option value="not_interested">Not Interested</option>
+                    <option value="callback">Callback</option>
+                    <option value="successful">Successful</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-textSecondary)' }}>
+                    Mínimo de llamadas
+                  </label>
+                  <select
+                    value={filters.minCalls}
+                    onChange={(e) => handleFilterChange('minCalls', Number(e.target.value))}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-opacity-20 text-sm"
+                    style={{ 
+                      backgroundColor: 'var(--color-surface)', 
+                      borderColor: 'var(--color-border)', 
+                      color: 'var(--color-textPrimary)'
+                    }}
+                  >
+                    <option value={1}>1+ llamadas</option>
+                    <option value={2}>2+ llamadas</option>
+                    <option value={3}>3+ llamadas</option>
+                    <option value={5}>5+ llamadas</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-textSecondary)' }}>
+                    Con acuerdo económico
+                  </label>
+                  <select
+                    value={filters.hasAgreedAmount}
+                    onChange={(e) => handleFilterChange('hasAgreedAmount', e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-opacity-20 text-sm"
+                    style={{ 
+                      backgroundColor: 'var(--color-surface)', 
+                      borderColor: 'var(--color-border)', 
+                      color: 'var(--color-textPrimary)'
+                    }}
+                  >
+                    <option value="all">Todos</option>
+                    <option value="yes">Con acuerdo</option>
+                    <option value="no">Sin acuerdo</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <button
+                    onClick={() => {
+                      setFilters({
+                        search: '',
+                        disposition: 'all',
+                        sortBy: 'last_call_date',
+                        sortOrder: 'desc',
+                        minCalls: 1,
+                        hasAgreedAmount: 'all'
+                      })
+                      setSearchInput('')
+                      setCurrentPage(1)
+                    }}
+                    className="px-4 py-2 border rounded-lg text-sm font-medium hover:opacity-80 transition-colors"
+                    style={{ 
+                      backgroundColor: 'var(--color-surfaceHover)', 
+                      borderColor: 'var(--color-border)', 
+                      color: 'var(--color-textPrimary)'
+                    }}
+                  >
+                    🔄 Limpiar filtros
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -215,7 +518,7 @@ export default function LeadsTable({ onCallSelect }: LeadsTableProps) {
               </tr>
             </thead>
             <tbody className="divide-y" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
-              {leads.map((lead) => (
+              {displayedLeads.map((lead) => (
                 <>
                   <tr 
                     key={lead.phone_number} 
@@ -467,6 +770,74 @@ export default function LeadsTable({ onCallSelect }: LeadsTableProps) {
             </tbody>
           </table>
         </div>
+        
+        {/* Paginación */}
+        {totalPages > 1 && (
+          <div className="px-6 py-4 border-t flex items-center justify-between" style={{ borderColor: 'var(--color-border)' }}>
+            <div className="flex items-center text-sm" style={{ color: 'var(--color-textSecondary)' }}>
+              Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, totalCount)} de {totalCount} leads
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={!hasPreviousPage}
+                className="px-3 py-2 text-sm font-medium rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ 
+                  backgroundColor: 'var(--color-surface)', 
+                  borderColor: 'var(--color-border)', 
+                  color: 'var(--color-textPrimary)'
+                }}
+              >
+                ← Anterior
+              </button>
+              
+              <div className="flex items-center space-x-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum
+                  if (totalPages <= 5) {
+                    pageNum = i + 1
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i
+                  } else {
+                    pageNum = currentPage - 2 + i
+                  }
+                  
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                        currentPage === pageNum ? 'text-white' : 'hover:opacity-80'
+                      }`}
+                      style={{ 
+                        backgroundColor: currentPage === pageNum ? 'var(--color-primary)' : 'var(--color-surfaceHover)',
+                        color: currentPage === pageNum ? 'white' : 'var(--color-textPrimary)'
+                      }}
+                    >
+                      {pageNum}
+                    </button>
+                  )
+                })}
+              </div>
+              
+              <button
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={!hasNextPage}
+                className="px-3 py-2 text-sm font-medium rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ 
+                  backgroundColor: 'var(--color-surface)', 
+                  borderColor: 'var(--color-border)', 
+                  color: 'var(--color-textPrimary)'
+                }}
+              >
+                Siguiente →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

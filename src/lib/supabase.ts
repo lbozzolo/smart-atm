@@ -821,6 +821,260 @@ export async function getLeads(): Promise<Lead[]> {
     console.error('❌ Error en getLeads optimizado:', error)
     throw error
   }
+}
+
+// Interfaz para filtros de leads con paginación
+export interface LeadFilters {
+  search?: string
+  disposition?: string
+  minCalls?: number
+  hasAgreedAmount?: 'all' | 'yes' | 'no'
+}
+
+// Interfaz para parámetros de paginación de leads
+export interface LeadPaginationParams {
+  page: number
+  limit: number
+  search?: string
+  sortBy: string
+  sortOrder: 'asc' | 'desc'
+  filters?: LeadFilters
+}
+
+// Resultado paginado de leads
+export interface PaginatedLeadsResult {
+  leads: Lead[]
+  totalCount: number
+  totalPages: number
+  currentPage: number
+  hasNextPage: boolean
+  hasPreviousPage: boolean
+}
+
+// Función optimizada para obtener leads con paginación del lado del servidor
+export async function getLeadsWithPagination(params: LeadPaginationParams): Promise<PaginatedLeadsResult> {
+  console.log('📞 Obteniendo leads con paginación del servidor...', params)
+  
+  try {
+    // Construcción de la consulta base para calls
+    let callsQuery = supabase
+      .from('calls')
+      .select(`
+        call_id,
+        to_number,
+        business_name,
+        owner_name,
+        owner_email,
+        location_type,
+        address_street,
+        address_city,
+        address_state,
+        address_zip,
+        disposition,
+        agreed_amount
+      `, { count: 'exact' })
+      .not('to_number', 'is', null)
+
+    // Aplicar filtros de búsqueda
+    if (params.search) {
+      const searchTerm = `%${params.search}%`
+      callsQuery = callsQuery.or(
+        `business_name.ilike.${searchTerm},` +
+        `owner_name.ilike.${searchTerm},` +
+        `to_number.ilike.${searchTerm},` +
+        `owner_email.ilike.${searchTerm},` +
+        `address_street.ilike.${searchTerm},` +
+        `address_city.ilike.${searchTerm},` +
+        `address_state.ilike.${searchTerm}`
+      )
+    }
+
+    // Aplicar ordenamiento (siempre por call_id para agrupar por teléfono después)
+    callsQuery = callsQuery.order('call_id', { ascending: false })
+
+    // Obtener más datos para permitir agrupación
+    const limitMultiplier = 3 // Obtener 3x más datos para agrupar por teléfono
+    const { data: callsData, error: callsError, count: totalCallsCount } = await callsQuery
+      .limit(params.limit * limitMultiplier * params.page) // Obtener suficientes datos
+
+    if (callsError) {
+      console.error('❌ Error obteniendo calls:', callsError)
+      throw callsError
+    }
+
+    // Obtener PCA y callbacks como antes
+    const { data: pcaData } = await supabase
+      .from('pca')
+      .select('call_id, disposition')
+      .not('disposition', 'is', null)
+
+    const { data: callbacksData } = await supabase
+      .from('callbacks')
+      .select('to_number, disposition, created_at')
+      .not('to_number', 'is', null)
+      .not('disposition', 'is', null)
+      .order('created_at', { ascending: false })
+
+    if (!callsData) {
+      return {
+        leads: [],
+        totalCount: 0,
+        totalPages: 0,
+        currentPage: params.page,
+        hasNextPage: false,
+        hasPreviousPage: false
+      }
+    }
+
+    // Crear mapas como en la función original
+    const pcaMap = new Map()
+    if (pcaData) {
+      pcaData.forEach(pca => pcaMap.set(pca.call_id, pca))
+    }
+
+    const callbacksMap = new Map()
+    if (callbacksData) {
+      callbacksData.forEach(callback => {
+        if (!callbacksMap.has(callback.to_number)) {
+          callbacksMap.set(callback.to_number, callback)
+        }
+      })
+    }
+
+    // Agrupar por teléfono (igual que la función original)
+    const leadsMap = new Map<string, Lead>()
+    
+    for (const call of callsData) {
+      if (!call.to_number) continue
+      
+      const pcaInfo = pcaMap.get(call.call_id)
+      const disposition = pcaInfo?.disposition || call.disposition
+      
+      const existingLead = leadsMap.get(call.to_number)
+      
+      if (!existingLead) {
+        const callback = callbacksMap.get(call.to_number)
+        
+        leadsMap.set(call.to_number, {
+          phone_number: call.to_number,
+          business_name: call.business_name,
+          owner_name: call.owner_name,
+          owner_email: call.owner_email,
+          location_type: call.location_type,
+          address_street: call.address_street,
+          address_city: call.address_city,
+          address_state: call.address_state,
+          address_zip: call.address_zip,
+          total_calls: 1,
+          last_call_date: call.call_id,
+          last_disposition: disposition || callback?.disposition || null,
+          agreed_amount: call.agreed_amount
+        })
+      } else {
+        existingLead.total_calls++
+        
+        if (call.call_id > existingLead.last_call_date) {
+          existingLead.business_name = call.business_name || existingLead.business_name
+          existingLead.owner_name = call.owner_name || existingLead.owner_name
+          existingLead.owner_email = call.owner_email || existingLead.owner_email
+          existingLead.location_type = call.location_type || existingLead.location_type
+          existingLead.address_street = call.address_street || existingLead.address_street
+          existingLead.address_city = call.address_city || existingLead.address_city
+          existingLead.address_state = call.address_state || existingLead.address_state
+          existingLead.address_zip = call.address_zip || existingLead.address_zip
+          existingLead.last_call_date = call.call_id
+          existingLead.last_disposition = disposition || existingLead.last_disposition
+          existingLead.agreed_amount = call.agreed_amount || existingLead.agreed_amount
+        }
+      }
+    }
+
+    // Aplicar callbacks
+    callbacksMap.forEach((callback, phoneNumber) => {
+      const lead = leadsMap.get(phoneNumber)
+      if (lead && (!lead.last_disposition || lead.last_disposition === 'Sin disposition')) {
+        lead.last_disposition = callback.disposition
+      }
+    })
+
+    let allLeads = Array.from(leadsMap.values())
+
+    // Aplicar filtros del lado del servidor
+    if (params.filters) {
+      if (params.filters.disposition && params.filters.disposition !== 'all') {
+        allLeads = allLeads.filter(lead => lead.last_disposition === params.filters.disposition)
+      }
+
+      if (params.filters.minCalls && params.filters.minCalls > 1) {
+        allLeads = allLeads.filter(lead => lead.total_calls >= params.filters.minCalls)
+      }
+
+      if (params.filters.hasAgreedAmount === 'yes') {
+        allLeads = allLeads.filter(lead => lead.agreed_amount && lead.agreed_amount > 0)
+      } else if (params.filters.hasAgreedAmount === 'no') {
+        allLeads = allLeads.filter(lead => !lead.agreed_amount || lead.agreed_amount <= 0)
+      }
+    }
+
+    // Aplicar ordenamiento
+    allLeads.sort((a, b) => {
+      let aValue: any
+      let bValue: any
+
+      switch (params.sortBy) {
+        case 'business_name':
+          aValue = a.business_name || ''
+          bValue = b.business_name || ''
+          break
+        case 'owner_name':
+          aValue = a.owner_name || ''
+          bValue = b.owner_name || ''
+          break
+        case 'total_calls':
+          aValue = a.total_calls
+          bValue = b.total_calls
+          break
+        case 'agreed_amount':
+          aValue = a.agreed_amount || 0
+          bValue = b.agreed_amount || 0
+          break
+        case 'last_call_date':
+        default:
+          aValue = a.last_call_date || ''
+          bValue = b.last_call_date || ''
+          break
+      }
+
+      if (typeof aValue === 'string') {
+        const comparison = aValue.localeCompare(bValue)
+        return params.sortOrder === 'asc' ? comparison : -comparison
+      } else {
+        const comparison = aValue - bValue
+        return params.sortOrder === 'asc' ? comparison : -comparison
+      }
+    })
+
+    // Aplicar paginación
+    const totalCount = allLeads.length
+    const totalPages = Math.ceil(totalCount / params.limit)
+    const startIndex = (params.page - 1) * params.limit
+    const paginatedLeads = allLeads.slice(startIndex, startIndex + params.limit)
+
+    console.log(`✅ Encontrados ${paginatedLeads.length} leads de ${totalCount} totales (página ${params.page}/${totalPages})`)
+
+    return {
+      leads: paginatedLeads,
+      totalCount,
+      totalPages,
+      currentPage: params.page,
+      hasNextPage: params.page < totalPages,
+      hasPreviousPage: params.page > 1
+    }
+    
+  } catch (error) {
+    console.error('❌ Error en getLeadsWithPagination:', error)
+    throw error
+  }
 }// Interfaz para interacciones combinadas (calls + callbacks)
 export interface CallInteraction {
   type: 'call' | 'callback'
