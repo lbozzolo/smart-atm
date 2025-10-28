@@ -105,6 +105,7 @@ export default function CallbacksModal({ isOpen, onClose, callId }: CallbacksMod
                       <div className="space-y-1 text-sm text-gray-700">
                         <p><span className="font-medium text-gray-900">ID:</span> {callback.id}</p>
                         <p><span className="font-medium text-gray-900">Propietario:</span> {callback.callback_owner_name}</p>
+                        <p><span className="font-medium text-gray-900">Teléfono propietario:</span> {callback.callback_owner_phone || 'N/A'}</p>
                         <p><span className="font-medium text-gray-900">Disposición:</span> {callback.disposition || 'N/A'}</p>
                         <p><span className="font-medium text-gray-900">Tipo de evento:</span> {callback.event_type || 'N/A'}</p>
                       </div>

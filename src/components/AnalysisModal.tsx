@@ -399,9 +399,15 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                                   <span className="font-semibold text-theme-text-primary text-xs">{callbackData.callback_owner_name || 'N/A'}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-1">
+                                  <span className="text-theme-text-secondary text-xs font-medium">Teléfono propietario</span>
+                                  <span className="font-mono text-theme-text-primary text-xs">{callbackData.callback_owner_phone || 'N/A'}</span>
+                                </div>
+                                <div className="flex justify-between items-center py-1">
                                   <span className="text-theme-text-secondary text-xs font-medium">Teléfono</span>
                                   <span className="font-mono text-theme-text-primary text-xs">{callbackData.to_number || 'N/A'}</span>
                                 </div>
+                              </div>
+                              <div className="space-y-2">
                                 <div className="flex justify-between items-center py-1">
                                   <span className="text-theme-text-secondary text-xs font-medium">Disposition</span>
                                   <span className="font-medium text-theme-text-primary text-xs">{callbackData.disposition || 'callback'}</span>
@@ -412,15 +418,9 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                                     {callbackData.callback_time_text_raw || callbackData.callback_time || 'N/A'}
                                   </span>
                                 </div>
-                              </div>
-                              <div className="space-y-2">
-                                <div className="flex justify-between items-center py-1">
-                                  <span className="text-theme-text-secondary text-xs font-medium">Estado</span>
-                                  <span className="font-medium text-theme-text-primary text-xs">{callbackData.lead_state || 'N/A'}</span>
-                                </div>
                                 <div className="flex justify-between items-center py-1">
                                   <span className="text-theme-text-secondary text-xs font-medium">Zona Horaria</span>
-                                  <span className="font-medium text-theme-text-primary text-xs">{callbackData.caller_tz || 'N/A'}</span>
+                                  <span className="font-mono text-theme-text-primary text-xs">{callbackData.caller_tz || 'N/A'}</span>
                                 </div>
                               </div>
                             </div>

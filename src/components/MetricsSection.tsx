@@ -70,6 +70,7 @@ function MetricCard({ title, value, change, icon, color, trend = 'neutral' }: Me
 export default function MetricsSection() {
   const [calls, setCalls] = useState<CallWithPCAInfo[]>([])
   const [totalCallbacks, setTotalCallbacks] = useState(0)
+  const [totalPcaMs, setTotalPcaMs] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -78,12 +79,12 @@ export default function MetricsSection() {
         // Obtener llamadas
         const callsData = await getCallsWithPCAInfo()
         setCalls(callsData)
-        
+
         // Obtener callbacks de la tabla callbacks
         const { data: callbacksData, error } = await supabase
           .from('callbacks')
           .select('id')
-        
+
         if (error) {
           console.error('Error fetching callbacks:', error)
           setTotalCallbacks(0)
@@ -91,7 +92,20 @@ export default function MetricsSection() {
           setTotalCallbacks(callbacksData?.length || 0)
           console.log('📞 Total callbacks encontrados en tabla callbacks:', callbacksData?.length || 0)
         }
-        
+
+        // Obtener todos los PCA y sumar duration_ms
+        const { data: pcaData, error: pcaError } = await supabase
+          .from('pca')
+          .select('duration_ms')
+
+        if (pcaError) {
+          console.error('Error fetching PCA:', pcaError)
+          setTotalPcaMs(0)
+        } else {
+          const totalMs = (pcaData || []).reduce((sum, pca) => sum + (pca.duration_ms || 0), 0)
+          setTotalPcaMs(totalMs)
+        }
+
       } catch (error) {
         console.error('Error loading metrics:', error)
       } finally {
@@ -123,6 +137,8 @@ export default function MetricsSection() {
 
   // Calcular métricas
   const totalCalls = calls.length
+  // Calcular minutos totales consumidos usando todos los PCA
+  const totalMinutes = Math.round(totalPcaMs / 1000 / 60)
   
   // Debug: ver qué dispositions realmente existen
   const uniqueDispositions = Array.from(new Set(calls.map(call => call.disposition).filter(Boolean)))
@@ -165,7 +181,14 @@ export default function MetricsSection() {
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
       <MetricCard
         title="Total de Llamadas"
-        value={totalCalls.toLocaleString()}
+        value={
+          <>
+            {totalCalls.toLocaleString()}
+            <span className="text-xs text-theme-text-muted ml-2 align-middle">
+              ({totalMinutes.toLocaleString()} min)
+            </span>
+          </>
+        }
         change={`Datos actuales`}
         icon={
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

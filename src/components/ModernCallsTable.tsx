@@ -595,6 +595,9 @@ export default function ModernCallsTable() {
                   </div>
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider">
+                  Duración
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider">
                   Acciones
                 </th>
               </tr>
@@ -626,6 +629,15 @@ export default function ModernCallsTable() {
                     <div className="text-sm font-semibold text-theme-text-primary">
                       {call.agreed_amount ? `$${call.agreed_amount.toLocaleString()}` : 'N/A'}
                     </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-xs text-theme-text-secondary">
+                    {(() => {
+                      if (call.duration_ms === null || call.duration_ms === undefined) return 'N/A';
+                      const totalSeconds = Math.round(call.duration_ms / 1000);
+                      const minutes = Math.floor(totalSeconds / 60);
+                      const seconds = totalSeconds % 60;
+                      return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                    })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     {call.hasPCA && (
@@ -682,10 +694,13 @@ export default function ModernCallsTable() {
       {selectedCallId && (
         <AnalysisModal
           isOpen={isAnalysisModalOpen}
-          onClose={closeAnalysisModal}
+          onClose={() => {
+            setIsAnalysisModalOpen(false);
+            setSelectedCallId(null);
+          }}
           callId={selectedCallId}
         />
       )}
     </div>
-  )
+  );
 }

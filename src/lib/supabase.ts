@@ -44,6 +44,7 @@ export interface Call {
 export interface CallWithPCAInfo extends Call {
   hasPCA: boolean
   hasCallbacks?: boolean
+  duration_ms?: number
 }
 
 // Definir el tipo de datos para la tabla callbacks
@@ -257,9 +258,12 @@ export async function getCallsWithPagination(params: PaginationParams): Promise<
     // Obtener información de PCA solo para las llamadas de esta página
     const callIds = calls.map(call => call.call_id)
     const { data: pcaData, error: pcaError } = await supabase
-      .from('pca')
-      .select('call_id, disposition')
-      .in('call_id', callIds)
+  .from('pca')
+  .select('call_id, disposition, duration_ms')
+  .in('call_id', callIds)
+    const pcaDurationMap = new Map(
+      (pcaData || []).map(pca => [pca.call_id, pca.duration_ms])
+    );
 
     if (pcaError) {
       console.error('Error fetching PCA data:', pcaError)
@@ -298,14 +302,12 @@ export async function getCallsWithPagination(params: PaginationParams): Promise<
       
       return {
         ...call,
-        // Si hay callback_owner_name, usarlo en lugar del owner_name original
         owner_name: callbackOwnerName || call.owner_name,
-        // Si hay callback_owner_phone, usarlo en lugar del owner_phone original
         owner_phone: callbackOwnerPhone || call.owner_phone,
-        // Si hay disposition del PCA, usarlo en lugar del disposition original
         disposition: pcaDisposition || call.disposition,
         hasPCA: callsWithPCA.has(call.call_id),
-        hasCallbacks: callbackOwnerNameMap.has(call.call_id)
+        hasCallbacks: callbackOwnerNameMap.has(call.call_id),
+        duration_ms: pcaDurationMap.get(call.call_id) || null
       }
     })
 

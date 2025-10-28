@@ -100,8 +100,8 @@ export default function CallsTable() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Disposición
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Monto Acordado
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-theme-surface-hover">
+                  <div className="flex items-center space-x-1"><span>Duración</span></div>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Acciones
@@ -137,8 +137,14 @@ export default function CallsTable() {
                       {call.disposition || 'N/A'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {call.agreed_amount ? `$${call.agreed_amount.toLocaleString()}` : 'N/A'}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-theme-text-primary">
+                      {(() => {
+                        const durationMs = call.pca?.duration_ms || call.duration_ms || 0;
+                        const minutes = durationMs ? Math.round(durationMs / 1000 / 60) : 0;
+                        return minutes > 0 ? `${minutes} min` : 'N/A';
+                      })()}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                     <button
