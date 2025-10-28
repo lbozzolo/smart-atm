@@ -5,7 +5,7 @@ import { getCallsWithPCAInfo, type CallWithPCAInfo, supabase } from '@/lib/supab
 
 interface MetricCardProps {
   title: string
-  value: string | number
+  value: React.ReactNode
   change?: string
   icon: React.ReactNode
   color: 'primary' | 'success' | 'accent' | 'warning' | 'error'
