@@ -139,11 +139,11 @@ export default function CallsTable() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-theme-text-primary">
-                      {(() => {
-                        const durationMs = call.pca?.duration_ms || call.duration_ms || 0;
-                        const minutes = durationMs ? Math.round(durationMs / 1000 / 60) : 0;
-                        return minutes > 0 ? `${minutes} min` : 'N/A';
-                      })()}
+                       {(() => {
+                         const durationMs = call.duration_ms || 0;
+                         const minutes = durationMs ? Math.round(durationMs / 1000 / 60) : 0;
+                         return minutes > 0 ? `${minutes} min` : 'N/A';
+                       })()}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
