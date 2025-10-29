@@ -169,6 +169,7 @@ export interface PaginationParams {
     disposition?: string
     dateFrom?: string
     dateTo?: string
+    callIds?: string[]
   }
   sortBy?: string
   sortOrder?: 'asc' | 'desc'
@@ -195,6 +196,11 @@ export async function getCallsWithPagination(params: PaginationParams): Promise<
     // Aplicar filtros de búsqueda
     if (params.search) {
       query = query.or(`business_name.ilike.%${params.search}%,owner_name.ilike.%${params.search}%,owner_phone.ilike.%${params.search}%,owner_email.ilike.%${params.search}%,address_street.ilike.%${params.search}%,call_id.ilike.%${params.search}%`)
+    }
+
+    // Filtrar por callIds si está presente (solo llamadas con callback)
+    if (params.filters?.callIds && params.filters.callIds.length > 0) {
+      query = query.in('call_id', params.filters.callIds)
     }
 
     // Aplicar filtros de fecha

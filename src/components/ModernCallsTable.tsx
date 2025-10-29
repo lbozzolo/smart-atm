@@ -37,6 +37,8 @@ interface TableFilters {
 }
 
 export default function ModernCallsTable() {
+  const [showOnlyCallbacks, setShowOnlyCallbacks] = useState(false);
+  const [callbackCallIds, setCallbackCallIds] = useState<string[]>([]);
   const [calls, setCalls] = useState<CallWithPCAInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -70,8 +72,22 @@ export default function ModernCallsTable() {
   })
 
   useEffect(() => {
-    fetchCalls()
-  }, [currentPage, itemsPerPage, filters.search, filters.disposition, filters.sortBy, filters.sortOrder, filters.dateFrom, filters.dateTo])
+    if (showOnlyCallbacks) {
+      // Cuando el filtro de callbacks está activo, obtener todos los call_id de la tabla callbacks antes de llamar a fetchCalls
+      (async () => {
+        const { data, error } = await import('@/lib/supabase').then(mod => mod.supabase
+          .from('callbacks')
+          .select('call_id')
+        );
+        if (!error && data) {
+          setCallbackCallIds(data.map((cb: any) => cb.call_id));
+        }
+        fetchCalls(data ? data.map((cb: any) => cb.call_id) : []);
+      })();
+    } else {
+      fetchCalls();
+    }
+  }, [showOnlyCallbacks, currentPage, itemsPerPage, filters.search, filters.disposition, filters.sortBy, filters.sortOrder, filters.dateFrom, filters.dateTo])
 
   // Sincronizar filtros temporales con filtros aplicados al montar
   useEffect(() => {
@@ -81,7 +97,7 @@ export default function ModernCallsTable() {
     })
   }, [filters.dateFrom, filters.dateTo])
 
-  const fetchCalls = async () => {
+  const fetchCalls = async (allCallbackIds?: string[]) => {
     try {
       setLoading(true)
       setError(null)
@@ -95,7 +111,8 @@ export default function ModernCallsTable() {
         filters: {
           disposition: filters.disposition === 'all' ? undefined : filters.disposition,
           dateFrom: filters.dateFrom || undefined,
-          dateTo: filters.dateTo || undefined
+          dateTo: filters.dateTo || undefined,
+          callIds: showOnlyCallbacks && allCallbackIds && allCallbackIds.length > 0 ? allCallbackIds : undefined
         }
       }
       
@@ -216,6 +233,7 @@ export default function ModernCallsTable() {
   // Server-side pagination - los datos ya vienen paginados
   const startIndex = (currentPage - 1) * itemsPerPage
   const paginatedCalls = calls // Los datos ya vienen filtrados y paginados del servidor
+  const filteredCalls = paginatedCalls;
 
   const getStatusBadge = (disposition?: string) => {
     const baseClasses = "px-2 py-1 rounded-full text-xs font-medium"
@@ -289,7 +307,7 @@ export default function ModernCallsTable() {
   }
 
   return (
-    <div className="space-y-6">
+  <div className="space-y-6">
       {/* Table Header with Controls */}
       <div className="bg-theme-surface rounded-theme-lg border border-theme-border shadow-sm">
         <div className="p-6 border-b border-theme-border">
@@ -299,6 +317,13 @@ export default function ModernCallsTable() {
               <span className="px-3 py-1 bg-theme-primary/10 text-theme-primary rounded-full text-sm font-medium">
                 {totalItems.toLocaleString()} registros
               </span>
+              <button
+                className={`px-3 py-1 rounded-theme text-xs font-medium border ml-2 ${showOnlyCallbacks ? 'bg-theme-primary text-white border-theme-primary' : 'bg-theme-surface text-theme-text-primary border-theme-border hover:bg-theme-surface-hover'}`}
+                onClick={() => setShowOnlyCallbacks(v => !v)}
+                title="Filtrar solo llamadas con callback"
+              >
+                {showOnlyCallbacks ? 'Ver todas' : 'Solo con callback'}
+              </button>
             </div>
             
             <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
@@ -603,7 +628,7 @@ export default function ModernCallsTable() {
               </tr>
             </thead>
             <tbody className="bg-theme-surface divide-y divide-theme-border">
-              {paginatedCalls.map((call, index) => (
+              {filteredCalls.map((call, index) => (
                 <tr 
                   key={call.call_id} 
                   className="hover:bg-theme-surface-hover transition-colors"
