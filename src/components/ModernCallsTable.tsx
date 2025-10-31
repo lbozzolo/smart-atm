@@ -1,4 +1,4 @@
-'use client'
+
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { getCallsWithPagination, type CallWithPCAInfo, type PaginationParams } from '@/lib/supabase'
@@ -37,6 +37,84 @@ interface TableFilters {
 }
 
 export default function ModernCallsTable() {
+  // ...existing code...
+
+  // Función para exportar los datos filtrados a CSV
+  const handleExportCSV = async () => {
+    // 1. Obtener todas las llamadas filtradas
+    let allCallIds: string[] = [];
+    if (showOnlyCallbacks) {
+      const { data, error } = await import('@/lib/supabase').then(mod => mod.supabase
+        .from('callbacks')
+        .select('call_id')
+      );
+      if (!error && data) {
+        allCallIds = data.map((cb: any) => cb.call_id);
+      }
+    }
+    const paginationParams: PaginationParams = {
+      page: 1,
+      limit: 10000,
+      search: filters.search || undefined,
+      sortBy: filters.sortBy,
+      sortOrder: filters.sortOrder,
+      filters: {
+        disposition: filters.disposition === 'all' ? undefined : filters.disposition,
+        dateFrom: filters.dateFrom || undefined,
+        dateTo: filters.dateTo || undefined,
+        callIds: showOnlyCallbacks && allCallIds.length > 0 ? allCallIds : undefined
+      }
+    };
+    const response = await getCallsWithPagination(paginationParams);
+    const callsData = response.data;
+    if (!callsData || callsData.length === 0) {
+      alert('No hay llamadas para exportar. Verifica los filtros.');
+      return;
+    }
+    // 2. Obtener todos los callbacks asociados a esas llamadas
+    const callIds = callsData.map(call => call.call_id);
+    const mod = await import('@/lib/supabase');
+    let query = mod.supabase
+      .from('callbacks')
+      .select('call_id, to_number, callback_owner_phone, callback_time_text_raw, caller_tz, callback_owner_name');
+    if (callIds.length > 0) {
+      query = query.in('call_id', callIds);
+    }
+    // Si hay filtro de fechas y el campo es tipo fecha, aplicar
+    if (filters.dateFrom) {
+      query = query.gte('callback_time_text_raw', filters.dateFrom);
+    }
+    if (filters.dateTo) {
+      query = query.lte('callback_time_text_raw', filters.dateTo);
+    }
+    const { data: callbacksData, error: callbacksError } = await query;
+    if (callbacksError) {
+      console.error('Error en consulta de callbacks:', callbacksError);
+    }
+    // 3. Crear un mapa de callbacks por call_id
+    const callbacksMap = new Map();
+    if (callbacksData && Array.isArray(callbacksData)) {
+      callbacksData.forEach(cb => {
+        callbacksMap.set(cb.call_id, cb);
+      });
+    }
+    // 4. Construir el CSV solo con las columnas solicitadas
+    // phone number (calls.to_number), callback_owner_phone, callback_time_text_raw, caller_tz, callback_owner_name
+    let csv = 'phone number,callback_owner_phone,callback_time_text_raw,caller_tz,callback_owner_name\n';
+    callsData.forEach(call => {
+      const cb = callbacksMap.get(call.call_id) || {};
+      csv += `"${call.to_number || ''}","${cb.callback_owner_phone || ''}","${cb.callback_time_text_raw || ''}","${cb.caller_tz || ''}","${cb.callback_owner_name || ''}"\n`;
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'calls_export.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
   const [showOnlyCallbacks, setShowOnlyCallbacks] = useState(false);
   const [callbackCallIds, setCallbackCallIds] = useState<string[]>([]);
   const [calls, setCalls] = useState<CallWithPCAInfo[]>([])
@@ -323,6 +401,13 @@ export default function ModernCallsTable() {
                 title="Filtrar solo llamadas con callback"
               >
                 {showOnlyCallbacks ? 'Ver todas' : 'Solo con callback'}
+              </button>
+              <button
+                className="px-3 py-1 rounded-theme text-xs font-medium border ml-2 bg-theme-surface text-theme-text-primary border-theme-border hover:bg-theme-surface-hover"
+                onClick={handleExportCSV}
+                title="Exportar resultados filtrados a CSV"
+              >
+                Exportar CSV
               </button>
             </div>
             
