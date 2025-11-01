@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 
 import { supabase } from '@/lib/supabase'
 // Utilidad para obtener la última llamada de cada cliente
-async function getLastCallDates(phoneNumbers: string[]): Promise<Record<string, string>> {
+async function getLastCallDates(phoneNumbers: string[]): Promise<Record<string, string | null>> {
   if (phoneNumbers.length === 0) return {}
   // Normalizar números (eliminar espacios, guiones, paréntesis)
   const normalize = (num: string) => num.replace(/[^\d]/g, '')
@@ -28,7 +28,7 @@ async function getLastCallDates(phoneNumbers: string[]): Promise<Record<string, 
     const result = phoneNumbers.reduce((acc, num) => {
     acc[num] = lastDates[normalize(num)] || null
     return acc
-  }, {} as Record<string, string>)
+  }, {} as Record<string, string | null>)
     console.log('lastDates mapeado:', result)
     return result
 }
@@ -83,29 +83,15 @@ export default function ClientesPage() {
       const to = from + ITEMS_PER_PAGE - 1
       query = query.range(from, to)
       const { data, error, count } = await query
-      let leadsWithDate = data || []
-      // Obtener fechas de última llamada
-      const phoneNumbers = leadsWithDate.map(l => l.phone_number)
+      // Construir array tipado de leads incluyendo la fecha de última llamada
+      const phoneNumbers = (data || []).map((l: any) => l.phone_number)
       const lastDates = await getLastCallDates(phoneNumbers)
-      // Mapeo seguro: todos los leads tendrán la propiedad last_call_date
-      leadsWithDate = leadsWithDate.map(lead => ({
+      const leadsWithDate: Lead[] = (data || []).map((lead: any) => ({
         phone_number: lead.phone_number,
         owner_name: lead.owner_name,
         business_name: lead.business_name,
         address: lead.address,
         last_call_date: lastDates[lead.phone_number] ?? null
-      }))
-      // Si algún lead no tiene la propiedad last_call_date, agregarla como null
-      leadsWithDate = leadsWithDate.map(lead => {
-        if (!('last_call_date' in lead)) {
-          return { ...lead, last_call_date: null }
-        }
-        return lead
-      })
-      // Si algún lead no tiene la propiedad last_call_date, agregarla como null
-      leadsWithDate = leadsWithDate.map(lead => ({
-        ...lead,
-        last_call_date: lead.last_call_date ?? null
       }))
       // Ordenar por fecha si corresponde
       if (sortBy === 'last_call_date') {
