@@ -10,6 +10,7 @@ import ProtectedRoute from '@/components/ProtectedRoute'
 
 export default function Home() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [showMetrics, setShowMetrics] = useState(true)
 
   return (
     <ProtectedRoute>
@@ -25,7 +26,7 @@ export default function Home() {
           pt-20 pb-8 px-6 transition-all duration-300
           ${sidebarCollapsed ? 'ml-20' : 'ml-64'}
         `}>
-          <div className="max-w-7xl mx-auto space-y-8">
+          <div className="w-full space-y-8">
             
             {/* Welcome Section */}
             <div className="mb-8">
@@ -38,11 +39,19 @@ export default function Home() {
                     Gestiona y analiza todas las llamadas del sistema Smart ATM
                   </p>
                 </div>
+                <div className="ml-4">
+                  <button
+                    className="inline-flex items-center gap-2 px-2 py-1 text-sm border border-theme-border rounded-theme bg-theme-surface hover:bg-theme-surface-hover text-theme-text-primary"
+                    onClick={() => setShowMetrics((s) => !s)}
+                  >
+                    {showMetrics ? 'Ocultar métricas' : 'Mostrar métricas'}
+                  </button>
+                </div>
               </div>
             </div>
 
             {/* Metrics Section */}
-            <MetricsSection />
+            {showMetrics && <MetricsSection />}
 
             {/* Calls Table */}
             <ModernCallsTable />

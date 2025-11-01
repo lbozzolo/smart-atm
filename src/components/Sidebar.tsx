@@ -32,6 +32,28 @@ export default function Sidebar({ activeItem = 'calls' }: SidebarProps) {
       ),
       href: '/leads',
       description: 'Prospectos y seguimiento'
+    },
+    {
+      id: 'clientes',
+      name: 'Clientes',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A9.001 9.001 0 0112 15c2.21 0 4.21.805 5.879 2.146M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      ),
+      href: '/clientes',
+      description: 'Listado de clientes'
+    },
+    {
+      id: 'importacion',
+      name: 'Importación',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h8a2 2 0 002-2v-2M9 12V4m6 8V4m-6 8l3 3m0 0l3-3" />
+        </svg>
+      ),
+      href: '/importacion',
+      description: 'Importar datos a la base'
     }
   ]
 

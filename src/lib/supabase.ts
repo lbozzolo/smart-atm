@@ -1136,7 +1136,8 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
     }
     
     // Obtener dispositions del PCA para las calls
-    let pcaMap = new Map()
+  let pcaMap = new Map()
+  let pcaSuccessMap = new Map()
     let callbackMap = new Map()
     
     if (calls && calls.length > 0) {
@@ -1145,12 +1146,13 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
       // Obtener dispositions del PCA
       const { data: pcaData } = await supabase
         .from('pca')
-        .select('call_id, disposition')
+        .select('call_id, disposition, call_successful')
         .in('call_id', callIds)
       
       if (pcaData) {
         pcaData.forEach(pca => {
           pcaMap.set(pca.call_id, pca.disposition)
+          pcaSuccessMap.set(pca.call_id, pca.call_successful)
         })
       }
       
@@ -1184,16 +1186,18 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
         return !hasCallback
       }).map(call => {
         const pcaDisposition = pcaMap.get(call.call_id) || call.disposition
+        const callSuccessful = pcaSuccessMap.has(call.call_id) ? pcaSuccessMap.get(call.call_id) : call.call_successful
         
         const result = {
           ...call,
           type: 'call' as const,
           date: call.call_id,
           display_date: call.call_id,
-          disposition: pcaDisposition
+          disposition: pcaDisposition,
+          call_successful: callSuccessful
         }
         
-        console.log(`📞 Call ${call.call_id}: disposition="${pcaDisposition}"`)
+        console.log(`📞 Call ${call.call_id}: disposition="${pcaDisposition}", call_successful=${callSuccessful}`)
         
         return result
       }),
@@ -1202,13 +1206,13 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
       ...(callbacks || []).map(callback => {
         const associatedCall = calls?.find(call => call.call_id === callback.call_id)
         const pcaDisposition = associatedCall ? (pcaMap.get(callback.call_id) || associatedCall.disposition) : callback.disposition
+        const callSuccessful = associatedCall ? (pcaSuccessMap.has(callback.call_id) ? pcaSuccessMap.get(callback.call_id) : associatedCall.call_successful) : undefined
         
         const result = {
           ...callback,
           type: 'callback' as const,
           date: callback.created_at || callback.id,
           display_date: callback.callback_time || callback.created_at || callback.id,
-          // Si tiene call asociada, usar algunos datos de la call (como address, business_name original)
           ...(associatedCall ? {
             business_name: associatedCall.business_name,
             owner_name: callback.callback_owner_name || associatedCall.owner_name,
@@ -1217,19 +1221,19 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
             address_state: associatedCall.address_state,
             owner_phone: associatedCall.owner_phone,
             agreed_amount: associatedCall.agreed_amount,
-            disposition: pcaDisposition
+            disposition: pcaDisposition,
+            call_successful: callSuccessful
           } : {
             business_name: callback.business_name,
             owner_name: callback.callback_owner_name,
             agreed_amount: undefined,
             disposition: callback.disposition
           }),
-          // Información específica del callback
           callback_time: callback.callback_time,
           callback_owner_name: callback.callback_owner_name
         }
         
-        console.log(`🔄 Callback ${callback.id || callback.call_id}: ${associatedCall ? 'con call asociada' : 'independiente'}, owner="${callback.callback_owner_name}"`)
+        console.log(`🔄 Callback ${callback.id || callback.call_id}: ${associatedCall ? 'con call asociada' : 'independiente'}, owner="${callback.callback_owner_name}", call_successful=${callSuccessful}`)
         
         return result
       })

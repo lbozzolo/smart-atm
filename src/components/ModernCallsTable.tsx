@@ -388,7 +388,7 @@ export default function ModernCallsTable() {
   <div className="space-y-6">
       {/* Table Header with Controls */}
       <div className="bg-theme-surface rounded-theme-lg border border-theme-border shadow-sm">
-        <div className="p-6 border-b border-theme-border">
+        <div className="px-4 py-4 border-b border-theme-border">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
             <div className="flex items-center space-x-4">
               <h2 className="text-xl font-bold text-theme-text-primary">Tabla de Llamadas</h2>
@@ -718,29 +718,29 @@ export default function ModernCallsTable() {
                   key={call.call_id} 
                   className="hover:bg-theme-surface-hover transition-colors"
                 >
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-theme-text-primary">{call.business_name || 'N/A'}</div>
+                  <td className="px-2 py-1 whitespace-nowrap">
+                    <div className="text-xs text-theme-text-primary">{call.business_name || 'N/A'}</div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-theme-text-primary">{call.owner_name || 'N/A'}</div>
+                  <td className="px-2 py-1 whitespace-nowrap">
+                    <div className="text-xs text-theme-text-primary">{call.owner_name || 'N/A'}</div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-mono text-theme-text-muted">{call.owner_phone || 'N/A'}</div>
+                  <td className="px-2 py-1 whitespace-nowrap">
+                    <div className="text-xs font-mono text-theme-text-muted">{call.owner_phone || 'N/A'}</div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-theme-text-secondary">{formatDate(call.created_at)}</div>
+                  <td className="px-2 py-1 whitespace-nowrap">
+                    <div className="text-xs text-theme-text-secondary">{formatDate(call.created_at)}</div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-2 py-1 whitespace-nowrap">
                     <span className={getStatusBadge(call.disposition)}>
                       {call.disposition || 'N/A'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-semibold text-theme-text-primary">
+                  <td className="px-2 py-1 whitespace-nowrap">
+                    <div className="text-xs font-semibold text-theme-text-primary">
                       {call.agreed_amount ? `$${call.agreed_amount.toLocaleString()}` : 'N/A'}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-xs text-theme-text-secondary">
+                  <td className="px-2 py-1 whitespace-nowrap text-xs text-theme-text-secondary">
                     {(() => {
                       if (call.duration_ms === null || call.duration_ms === undefined) return 'N/A';
                       const totalSeconds = Math.round(call.duration_ms / 1000);
@@ -749,11 +749,11 @@ export default function ModernCallsTable() {
                       return `${minutes}:${seconds.toString().padStart(2, '0')}`;
                     })()}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <td className="px-2 py-1 whitespace-nowrap text-xs">
                     {call.hasPCA && (
                       <button
                         onClick={() => handleViewAnalysis(call.call_id)}
-                        className="inline-flex items-center px-3 py-1.5 border border-theme-accent text-theme-accent bg-theme-accent/10 hover:bg-theme-accent/20 rounded-theme text-xs font-medium transition-colors"
+                        className="inline-flex items-center px-2 py-1 border border-theme-accent text-theme-accent bg-theme-accent/10 hover:bg-theme-accent/20 rounded-theme text-xs font-medium transition-colors"
                       >
                         Análisis
                         <span className="ml-1 w-2 h-2 bg-theme-accent rounded-full"></span>
