@@ -7,6 +7,14 @@ import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Sidebar from '@/components/Sidebar'
 
+const formatDuration = (durationMs?: number) => {
+  if (!durationMs) return 'N/A'
+  const seconds = Math.floor(durationMs / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+}
+
 export default function ClienteDetallePage() {
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null)
   const params = useParams()
@@ -14,6 +22,7 @@ export default function ClienteDetallePage() {
   const [cliente, setCliente] = useState<any>(null)
   const [calls, setCalls] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [copiedPhone, setCopiedPhone] = useState(false)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -84,9 +93,11 @@ export default function ClienteDetallePage() {
                             </div>
                             {/* Información principal */}
                             <div className="flex items-center gap-2 mb-2">
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-theme-primary/10 text-theme-primary">
-                                Llamada
-                              </span>
+                              {call.hasCallback && (
+                                <span title="Esta llamada tiene callback asociado" className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                  🔔 Callback
+                                </span>
+                              )}
                               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-theme-primary/20 text-theme-primary">
                                 {call.disposition || 'N/A'}
                               </span>
@@ -96,21 +107,8 @@ export default function ClienteDetallePage() {
                                 </span>
                               )}
                             </div>
-                            {/* Detalles específicos */}
-                            <div className="space-y-1">
-                              <p className="font-medium text-sm" style={{ color: 'var(--color-textPrimary)' }}>
-                                {call.business_name || 'Negocio sin nombre'}
-                              </p>
-                              {call.address && (
-                                <p className="text-xs flex items-center" style={{ color: 'var(--color-textMuted)' }}>
-                                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  </svg>
-                                  {call.address}
-                                </p>
-                              )}
-                            </div>
+                            {/* Se omiten detalles del cliente (business_name, address, owner_name)
+                                porque ya se muestran en la columna derecha. Mantener solo datos específicos de la llamada. */}
                             {/* Monto acordado */}
                             {call.agreed_amount && (
                               <div className="mt-2">
@@ -122,9 +120,8 @@ export default function ClienteDetallePage() {
                                 </span>
                               </div>
                             )}
-                            {/* Propietario y duración */}
-                            <div className="text-xs text-theme-text-secondary mt-1">{call.owner_name || 'N/A'}</div>
-                            <div className="text-xs text-theme-text-secondary">Duración: {call.duration_ms ? `${Math.round(call.duration_ms/1000)}s` : 'N/A'}</div>
+                            {/* Duración (dato específico de la llamada) */}
+                            <div className="text-xs text-theme-text-secondary">Duración: {formatDuration(call.duration_ms)}</div>
                           </div>
                         </div>
                       );
@@ -138,18 +135,79 @@ export default function ClienteDetallePage() {
                   callId={selectedCallId || ''}
                 />
               </div>
-              {/* Columna derecha: Datos personales */}
+              {/* Columna derecha: Datos personales (vista mejorada) */}
               <div className="bg-theme-surface-hover rounded-theme-lg border border-theme-border p-6 shadow-sm">
                 <h3 className="text-lg font-semibold mb-6 text-theme-text-primary">Datos del Cliente</h3>
                 {cliente ? (
                   <div className="space-y-4">
-                    <div className="flex items-center"><span className="font-medium text-theme-text-secondary w-40">Empresa:</span> <span className="text-theme-text-primary font-semibold">{cliente.business_name || 'N/A'}</span></div>
-                    <div className="flex items-center"><span className="font-medium text-theme-text-secondary w-40">Propietario:</span> <span className="text-theme-text-primary">{cliente.owner_name || 'N/A'}</span></div>
-                    <div className="flex items-center"><span className="font-medium text-theme-text-secondary w-40">Teléfono:</span> <span className="font-mono text-theme-text-primary">{cliente.phone_number || 'N/A'}</span></div>
-                    <div className="flex items-center"><span className="font-medium text-theme-text-secondary w-40">Dirección:</span> <span className="text-theme-text-primary">{cliente.address || 'N/A'}</span></div>
-                    <div className="flex items-center"><span className="font-medium text-theme-text-secondary w-40">Tipo de Ubicación:</span> <span className="text-theme-text-primary">{cliente.location_type || 'N/A'}</span></div>
-                    <div className="flex items-center"><span className="font-medium text-theme-text-secondary w-40">Email:</span> <span className="text-theme-text-primary">{cliente.email || 'N/A'}</span></div>
-                    <div className="flex items-center"><span className="font-medium text-theme-text-secondary w-40">Zona Horaria:</span> <span className="text-theme-text-primary">{cliente.timezone || 'N/A'}</span></div>
+                    <div className="flex items-start space-x-4">
+                      <div className="w-12 h-12 rounded-full bg-theme-primary/10 flex items-center justify-center text-theme-primary font-semibold text-lg">
+                        {cliente.business_name ? cliente.business_name.charAt(0).toUpperCase() : 'C'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-theme-text-secondary">Empresa</p>
+                            <p className="text-lg font-semibold text-theme-text-primary truncate">{cliente.business_name || 'N/D'}</p>
+                          </div>
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 gap-2">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm text-theme-text-secondary">Propietario</p>
+                              <p className="text-sm text-theme-text-primary">{cliente.owner_name || 'N/D'}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <div>
+                                <p className="text-sm text-theme-text-secondary">Teléfono</p>
+                                <p className="text-theme-text-primary font-mono inline-flex items-center">
+                                  {cliente.phone_number || 'N/D'}
+                                </p>
+                              </div>
+                              {cliente.phone_number && (
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      await navigator.clipboard.writeText(cliente.phone_number)
+                                      setCopiedPhone(true)
+                                      setTimeout(() => setCopiedPhone(false), 1600)
+                                    } catch (err) {
+                                      console.error('Error copiando teléfono:', err)
+                                    }
+                                  }}
+                                  className={`flex items-center justify-center w-5 h-5 rounded text-xs transition-all duration-150 ${copiedPhone ? 'text-theme-success bg-theme-success/20' : 'text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-primary/10'}`}
+                                  title={copiedPhone ? '¡Copiado!' : 'Copiar número'}
+                                >
+                                  {copiedPhone ? (
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  ) : (
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                    </svg>
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-sm text-theme-text-secondary">Dirección</p>
+                            <p className="text-sm text-theme-text-primary">{cliente.address || 'N/D'}</p>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-theme-primary/10 text-theme-primary">{cliente.location_type || 'N/D'}</span>
+                            <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-theme-surface-hover text-theme-text-secondary">{cliente.timezone || 'N/D'}</span>
+                          </div>
+                          <div>
+                            <p className="text-sm text-theme-text-secondary">Email</p>
+                            <p className="text-sm text-theme-text-primary">{cliente.email || 'N/D'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <div className="text-theme-text-secondary text-base">No se encontró el cliente.</div>

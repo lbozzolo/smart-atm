@@ -1100,6 +1100,7 @@ export interface CallInteraction {
   created_at?: string
   date: string
   display_date: string
+  hasCallback?: boolean
 }
 
 // Función para obtener historial completo (calls + callbacks) por número de teléfono
@@ -1143,16 +1144,20 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
     if (calls && calls.length > 0) {
       const callIds = calls.map(call => call.call_id)
       
-      // Obtener dispositions del PCA
+      // Obtener dispositions y duración del PCA
       const { data: pcaData } = await supabase
         .from('pca')
-        .select('call_id, disposition, call_successful')
+        .select('call_id, disposition, call_successful, duration_ms')
         .in('call_id', callIds)
       
       if (pcaData) {
         pcaData.forEach(pca => {
           pcaMap.set(pca.call_id, pca.disposition)
           pcaSuccessMap.set(pca.call_id, pca.call_successful)
+          // Guardar duración si existe
+          if (typeof pca.duration_ms !== 'undefined') {
+            pcaMap.set(`${pca.call_id}::duration_ms`, pca.duration_ms)
+          }
         })
       }
       
@@ -1179,35 +1184,49 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
     
     // Combinar y marcar el tipo - SIN DUPLICAR
     const allInteractions: CallInteraction[] = [
-      // Procesar solo las calls que NO tienen callback asociado (mostrarlas como calls normales)
-      ...(calls || []).filter(call => {
+      // Procesar todas las calls e indicar si tienen callback asociado
+      ...(calls || []).map(call => {
         const hasCallback = callbackMap.has(call.call_id)
-        console.log(`📞 Call ${call.call_id}: disposition="${call.disposition}", hasCallback=${hasCallback}`)
-        return !hasCallback
-      }).map(call => {
         const pcaDisposition = pcaMap.get(call.call_id) || call.disposition
         const callSuccessful = pcaSuccessMap.has(call.call_id) ? pcaSuccessMap.get(call.call_id) : call.call_successful
-        
+        // Intentar obtener duration_ms desde PCA si está disponible
+        const pcaDuration = pcaMap.has(`${call.call_id}::duration_ms`) ? pcaMap.get(`${call.call_id}::duration_ms`) : undefined
+
+        // Use created_at as the canonical date when available to avoid duplication and allow proper sorting
+        const canonicalDate = call.created_at || call.call_id || ''
+        const displayDate = call.created_at || call.call_id || ''
+
         const result = {
           ...call,
           type: 'call' as const,
-          date: call.call_id,
-          display_date: call.call_id,
+          date: canonicalDate,
+          display_date: displayDate,
           disposition: pcaDisposition,
-          call_successful: callSuccessful
+          call_successful: callSuccessful,
+          duration_ms: typeof pcaDuration !== 'undefined' ? pcaDuration : call.duration_ms,
+          hasCallback
         }
-        
-        console.log(`📞 Call ${call.call_id}: disposition="${pcaDisposition}", call_successful=${callSuccessful}`)
-        
+
+        console.log(`📞 Call ${call.call_id}: disposition="${pcaDisposition}", call_successful=${callSuccessful}, hasCallback=${hasCallback}, date=${canonicalDate}`)
+
         return result
       }),
       
       // Procesar TODOS los callbacks (incluye los que tienen call asociada y los independientes)
-      ...(callbacks || []).map(callback => {
+      ...((callbacks || []).filter(callback => {
+        // Si el callback está asociado a una call (misma call_id), NO incluirlo como entrada separada.
+        // En su lugar la llamada ya se muestra y está marcada con hasCallback.
+        const associatedCall = calls?.find(call => call.call_id === callback.call_id)
+        if (associatedCall) {
+          console.log(`Omitiendo callback ${callback.id || callback.call_id} porque existe call asociada ${associatedCall.call_id}`)
+          return false
+        }
+        return true
+      }).map(callback => {
         const associatedCall = calls?.find(call => call.call_id === callback.call_id)
         const pcaDisposition = associatedCall ? (pcaMap.get(callback.call_id) || associatedCall.disposition) : callback.disposition
         const callSuccessful = associatedCall ? (pcaSuccessMap.has(callback.call_id) ? pcaSuccessMap.get(callback.call_id) : associatedCall.call_successful) : undefined
-        
+
         const result = {
           ...callback,
           type: 'callback' as const,
@@ -1232,17 +1251,25 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
           callback_time: callback.callback_time,
           callback_owner_name: callback.callback_owner_name
         }
-        
+
         console.log(`🔄 Callback ${callback.id || callback.call_id}: ${associatedCall ? 'con call asociada' : 'independiente'}, owner="${callback.callback_owner_name}", call_successful=${callSuccessful}`)
-        
+
         return result
-      })
+      }))
     ]
     
-    // Ordenar por fecha (más recientes primero)
+    // Ordenar por fecha (más antiguos primero). Intentamos parsear ISO dates cuando sea posible.
     allInteractions.sort((a, b) => {
-      if (a.date > b.date) return -1
-      if (a.date < b.date) return 1
+      const ta = Date.parse(a.date || '')
+      const tb = Date.parse(b.date || '')
+      if (!Number.isNaN(ta) && !Number.isNaN(tb)) {
+        return ta < tb ? -1 : (ta > tb ? 1 : 0)
+      }
+      // Fallback a comparación lexicográfica (ascendente)
+      const da = a.date || ''
+      const db = b.date || ''
+      if (da < db) return -1
+      if (da > db) return 1
       return 0
     })
     

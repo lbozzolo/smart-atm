@@ -33,6 +33,34 @@ async function getLastCallDates(phoneNumbers: string[]): Promise<Record<string, 
     return result
 }
 
+// Obtener conteo de callbacks por teléfono
+async function getCallbackCounts(phoneNumbers: string[]): Promise<Record<string, number>> {
+  // Simpler approach: count callbacks by callbacks.to_number matching leads.phone_number
+  if (phoneNumbers.length === 0) return {}
+  const normalize = (num: string) => num.replace(/[^\d]/g, '')
+  const normalized = phoneNumbers.map(normalize)
+
+  // Query callbacks by to_number in the normalized list
+  const { data: callbacksData, error: callbacksErr } = await supabase
+    .from('callbacks')
+    .select('to_number')
+    .in('to_number', normalized)
+  if (callbacksErr) console.log('Error fetching callbacks by to_number', callbacksErr)
+
+  const countsByNorm: Record<string, number> = {}
+  if (callbacksData) {
+    callbacksData.forEach((cb: any) => {
+      const norm = normalize(cb.to_number)
+      countsByNorm[norm] = (countsByNorm[norm] || 0) + 1
+    })
+  }
+
+  return phoneNumbers.reduce((acc, num) => {
+    acc[num] = countsByNorm[normalize(num)] || 0
+    return acc
+  }, {} as Record<string, number>)
+}
+
 // Componente para mostrar la cantidad de llamadas
 function LlamadasCount({ phoneNumber }: { phoneNumber: string }) {
   const [count, setCount] = useState<number | null>(null)
@@ -59,6 +87,7 @@ export default function ClientesPage() {
   business_name?: string
   address?: string
   last_call_date: string | null
+  callbacks_count: number
   }
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
@@ -68,6 +97,7 @@ export default function ClientesPage() {
   const [sortBy, setSortBy] = useState<'business_name' | 'owner_name' | 'last_call_date'>('business_name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [dispositionFilter, setDispositionFilter] = useState<string>('all')
+  const [onlyWithCallbacks, setOnlyWithCallbacks] = useState(false)
   const ITEMS_PER_PAGE = 25
 
   useEffect(() => {
@@ -76,6 +106,22 @@ export default function ClientesPage() {
       let query = supabase
         .from('leads')
         .select('phone_number, owner_name, business_name, address', { count: 'exact' })
+      // Si el usuario quiere sólo leads con callbacks, obtener los phone_numbers asociados server-side
+      if (onlyWithCallbacks) {
+        // Obtener directamente los to_number desde callbacks y filtrar leads por phone_number
+        const { data: cbData, error: cbErr } = await supabase.from('callbacks').select('to_number')
+        if (cbErr) console.log('Error fetching callbacks to_number', cbErr)
+        const phoneNumbersWithCallbacks = (cbData || []).map((c: any) => c.to_number).filter(Boolean)
+        if (phoneNumbersWithCallbacks.length === 0) {
+          // No hay callbacks -> no mostrar leads
+          setLeads([])
+          setTotalItems(0)
+          setLoading(false)
+          return
+        }
+        // Aplicar filtro server-side por phone_number
+        query = query.in('phone_number', phoneNumbersWithCallbacks)
+      }
       if (search.trim()) {
         query = query.or(`phone_number.ilike.%${search}%,owner_name.ilike.%${search}%,business_name.ilike.%${search}%`)
       }
@@ -86,16 +132,23 @@ export default function ClientesPage() {
       // Construir array tipado de leads incluyendo la fecha de última llamada
       const phoneNumbers = (data || []).map((l: any) => l.phone_number)
       const lastDates = await getLastCallDates(phoneNumbers)
+      const callbackCounts = await getCallbackCounts(phoneNumbers)
       const leadsWithDate: Lead[] = (data || []).map((lead: any) => ({
         phone_number: lead.phone_number,
         owner_name: lead.owner_name,
         business_name: lead.business_name,
         address: lead.address,
-        last_call_date: lastDates[lead.phone_number] ?? null
+        last_call_date: lastDates[lead.phone_number] ?? null,
+        callbacks_count: callbackCounts[lead.phone_number] ?? 0
       }))
-      // Ordenar por fecha si corresponde
+      // Aplicar filtro local si el usuario quiere ver sólo leads con callbacks
+      let visibleLeads = leadsWithDate
+      if (onlyWithCallbacks) {
+        visibleLeads = leadsWithDate.filter(l => (l.callbacks_count ?? 0) > 0)
+      }
+      // Ordenar por fecha si corresponde (aplica sobre los leads visibles)
       if (sortBy === 'last_call_date') {
-        leadsWithDate.sort((a, b) => {
+        visibleLeads.sort((a, b) => {
           if (!a.last_call_date && !b.last_call_date) return 0
           if (!a.last_call_date) return 1
           if (!b.last_call_date) return -1
@@ -104,7 +157,7 @@ export default function ClientesPage() {
             : new Date(b.last_call_date).getTime() - new Date(a.last_call_date).getTime()
         })
       } else {
-        leadsWithDate.sort((a, b) => {
+        visibleLeads.sort((a, b) => {
           const aValue = a[sortBy] || ''
           const bValue = b[sortBy] || ''
           return sortOrder === 'asc'
@@ -112,12 +165,13 @@ export default function ClientesPage() {
             : String(bValue).localeCompare(String(aValue))
         })
       }
-      setLeads(leadsWithDate)
-      setTotalItems(count || 0)
+      setLeads(visibleLeads)
+      // Si se aplica el filtro local, ajustar el total mostrado al número visible en la página
+      setTotalItems(onlyWithCallbacks ? visibleLeads.length : (count || 0))
       setLoading(false)
     }
     fetchLeads()
-  }, [currentPage, search, sortBy, sortOrder])
+  }, [currentPage, search, sortBy, sortOrder, onlyWithCallbacks])
 
   // Filtrar leads por cualquier campo
   // Ya no se filtra en frontend, solo se muestra lo que trae la consulta
@@ -184,6 +238,15 @@ export default function ClientesPage() {
                 <option value="Fallida">Fallida</option>
                 <option value="Sin disposition">Sin disposition</option>
               </select>
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="form-checkbox h-4 w-4 text-theme-primary"
+                  checked={onlyWithCallbacks}
+                  onChange={e => { setOnlyWithCallbacks(e.target.checked); setCurrentPage(1); }}
+                />
+                <span className="text-theme-text-primary">Solo con callbacks</span>
+              </label>
             </div>
           </div>
           {loading ? (
@@ -208,6 +271,7 @@ export default function ClientesPage() {
                     <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-56">Dirección</th>
                     <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-40">Última llamada</th>
                     <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-24">Llamadas</th>
+                    <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-24">Callbacks</th>
                     <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-32">Acciones</th>
                   </tr>
                 </thead>
@@ -240,6 +304,9 @@ export default function ClientesPage() {
                       </td>
                       <td className="px-2 py-1 align-top break-words">
                         <span className="text-xs"><LlamadasCount phoneNumber={lead.phone_number} /></span>
+                      </td>
+                      <td className="px-2 py-1 align-top break-words">
+                        <span className="text-xs font-semibold text-theme-secondary">{lead.callbacks_count ?? 0}</span>
                       </td>
                       <td className="px-2 py-1 align-top">
                         <button
