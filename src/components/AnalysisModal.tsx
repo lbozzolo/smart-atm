@@ -7,17 +7,20 @@ interface AnalysisModalProps {
   isOpen: boolean
   onClose: () => void
   callId: string
+  // optional initial call data to display immediately (enriched from list)
+  initialCallData?: any
 }
 
-export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModalProps) {
+export default function AnalysisModal({ isOpen, onClose, callId, initialCallData }: AnalysisModalProps) {
   const [pcaData, setPcaData] = useState<PCA[]>([])
-  const [callData, setCallData] = useState<Call | null>(null)
+  const [callData, setCallData] = useState<Call | null>(initialCallData ?? null)
   const [isCallback, setIsCallback] = useState(false)
   const [callbackData, setCallbackData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'overview' | 'transcript'>('overview')
   const [copied, setCopied] = useState(false)
+  const [showRaw, setShowRaw] = useState(false)
 
   useEffect(() => {
     if (isOpen && callId) {
@@ -197,6 +200,13 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                     {callId}
                   </p>
                   <button
+                    onClick={() => setShowRaw(v => !v)}
+                    className="ml-2 text-xs px-2 py-1 border rounded text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-primary/10"
+                    title="Mostrar datos crudos de la llamada"
+                  >
+                    {showRaw ? 'Ocultar datos' : 'Mostrar datos'}
+                  </button>
+                  <button
                     onClick={async () => {
                       try {
                         await navigator.clipboard.writeText(callId)
@@ -328,17 +338,22 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                             <div>
                               <p className="text-slate-600 text-xs font-medium">Estado</p>
                               <p className="text-lg font-semibold text-slate-800">
-                                {pca.call_successful ? 'Exitosa' : 'Fallida'}
+                                {pca.disconnection_reason ? (
+                                  <span>
+                                    <span className="text-theme-error font-semibold">Fallida:</span>
+                                    <span className="ml-2 text-sm text-theme-text-secondary font-normal">{pca.disconnection_reason}</span>
+                                  </span>
+                                ) : (pca.call_successful ? 'Exitosa' : 'Fallida')}
                               </p>
                             </div>
                             <div className="w-8 h-8 bg-slate-100 rounded flex items-center justify-center">
-                              {pca.call_successful ? (
-                                <svg className="w-5 h-5 text-theme-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                              ) : (
+                              {(pca.disconnection_reason || !pca.call_successful) ? (
                                 <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                              ) : (
+                                <svg className="w-5 h-5 text-theme-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                               )}
                             </div>
@@ -374,7 +389,13 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
 
                       {/* Información del Cliente */}
                       {callData && (
-                        <div className="bg-theme-primary/10 border border-theme-primary/20 rounded-lg p-4 mb-4">
+                        <>
+                          {showRaw && (
+                            <div className="p-3 bg-gray-50 border border-gray-200 rounded mb-2">
+                              <pre className="text-xs max-h-60 overflow-auto">{JSON.stringify(callData, null, 2)}</pre>
+                            </div>
+                          )}
+                          <div className="bg-theme-primary/10 border border-theme-primary/20 rounded-lg p-4 mb-4">
                           <h3 className="flex items-center text-sm font-semibold text-theme-primary mb-3">
                             <span className="w-5 h-5 bg-theme-primary/10 rounded flex items-center justify-center mr-2 text-xs">
                               {isCallback ? (
@@ -404,7 +425,7 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                                 </div>
                                 <div className="flex justify-between items-center py-1">
                                   <span className="text-theme-text-secondary text-xs font-medium">Teléfono</span>
-                                  <span className="font-mono text-theme-text-primary text-xs">{callbackData.to_number || 'N/A'}</span>
+                                  <span className="font-mono text-theme-text-primary text-xs">{(callData as any)?.lead_phone || callbackData.callback_owner_phone || callbackData.to_number || (callData as any)?.owner_phone || 'N/A'}</span>
                                 </div>
                               </div>
                               <div className="space-y-2">
@@ -430,11 +451,15 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                               <div className="space-y-2">
                                 <div className="flex justify-between items-center py-1">
                                   <span className="text-theme-text-secondary text-xs font-medium">Propietario</span>
-                                  <span className="font-semibold text-theme-text-primary text-xs">{callData.owner_name || 'N/A'}</span>
+                                  <span className="font-semibold text-theme-text-primary text-xs">
+                                    {callData?.owner_name && String(callData.owner_name).trim() !== ''
+                                      ? callData.owner_name
+                                      : ((callData as any)?.lead_business_name || callData?.business_name || 'N/A')}
+                                  </span>
                                 </div>
                                 <div className="flex justify-between items-center py-1">
                                   <span className="text-theme-text-secondary text-xs font-medium">Negocio</span>
-                                  <span className="font-semibold text-theme-text-primary text-xs">{callData.business_name || 'N/A'}</span>
+                                  <span className="font-semibold text-theme-text-primary text-xs">{(callData as any)?.lead_business_name || callData.business_name || 'N/A'}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-1">
                                   <span className="text-theme-text-secondary text-xs font-medium">Tipo de Negocio</span>
@@ -442,7 +467,7 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                                 </div>
                                 <div className="flex justify-between items-center py-1">
                                   <span className="text-theme-text-secondary text-xs font-medium">Teléfono</span>
-                                  <span className="font-mono text-theme-text-primary text-xs">{callData.owner_phone || 'N/A'}</span>
+                                  <span className="font-mono text-theme-text-primary text-xs">{(callData as any)?.lead_phone || callData?.owner_phone || callData?.to_number || 'N/A'}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-1">
                                   <span className="text-theme-text-secondary text-xs font-medium">Email</span>
@@ -480,7 +505,7 @@ export default function AnalysisModal({ isOpen, onClose, callId }: AnalysisModal
                             </div>
                           )}
                         </div>
-                      )}
+                      </>)}
 
                       {/* Información detallada - Solo para calls normales */}
                       {!isCallback && (

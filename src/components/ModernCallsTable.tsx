@@ -121,6 +121,7 @@ export default function ModernCallsTable() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null)
+  const [selectedCallData, setSelectedCallData] = useState<CallWithPCAInfo | null>(null)
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(25)
@@ -219,6 +220,8 @@ export default function ModernCallsTable() {
   }
 
   const handleViewAnalysis = (callId: string) => {
+    const call = calls.find(c => c.call_id === callId) || null
+    setSelectedCallData(call)
     setSelectedCallId(callId)
     setIsAnalysisModalOpen(true)
   }
@@ -226,6 +229,7 @@ export default function ModernCallsTable() {
   const closeAnalysisModal = () => {
     setIsAnalysisModalOpen(false)
     setSelectedCallId(null)
+    setSelectedCallData(null)
   }
 
   // Función para manejar búsqueda con debounce
@@ -359,6 +363,13 @@ export default function ModernCallsTable() {
       default:
         return `${baseClasses} bg-theme-surface-hover text-theme-text-muted`
     }
+  }
+
+  // Heurística para detectar contestador/voicemail en disconnection_reason
+  const isAnsweringMachine = (reason?: string | null) => {
+    if (!reason) return false
+    const s = reason.toString().toLowerCase()
+    return /contest|buzon|voicemail|answering|contestador|machine|grabadora|grabación|contestadoras/.test(s)
   }
 
   if (loading) {
@@ -657,17 +668,7 @@ export default function ModernCallsTable() {
                     )}
                   </div>
                 </th>
-                <th 
-                  className="px-6 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider cursor-pointer hover:bg-theme-surface-hover"
-                  onClick={() => handleSort('owner_name')}
-                >
-                  <div className="flex items-center space-x-1">
-                    <span>Propietario</span>
-                    {filters.sortBy === 'owner_name' && (
-                      <span>{filters.sortOrder === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
+                {/* Columna 'Propietario' eliminada por petición del usuario */}
                 <th className="px-6 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider">
                   Teléfono
                 </th>
@@ -682,6 +683,9 @@ export default function ModernCallsTable() {
                     )}
                   </div>
                 </th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider">
+                  Estado
+                </th>
                 <th 
                   className="px-6 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider cursor-pointer hover:bg-theme-surface-hover"
                   onClick={() => handleSort('disposition')}
@@ -693,17 +697,7 @@ export default function ModernCallsTable() {
                     )}
                   </div>
                 </th>
-                <th 
-                  className="px-6 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider cursor-pointer hover:bg-theme-surface-hover"
-                  onClick={() => handleSort('agreed_amount')}
-                >
-                  <div className="flex items-center space-x-1">
-                    <span>Monto</span>
-                    {filters.sortBy === 'agreed_amount' && (
-                      <span>{filters.sortOrder === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
+                {/* Columna 'Monto' eliminada por petición del usuario */}
                 <th className="px-6 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider">
                   Duración
                 </th>
@@ -721,24 +715,74 @@ export default function ModernCallsTable() {
                   <td className="px-2 py-1 whitespace-nowrap">
                     <div className="text-xs text-theme-text-primary">{call.business_name || 'N/A'}</div>
                   </td>
+                  {/* Owner column removed */}
                   <td className="px-2 py-1 whitespace-nowrap">
-                    <div className="text-xs text-theme-text-primary">{call.owner_name || 'N/A'}</div>
-                  </td>
-                  <td className="px-2 py-1 whitespace-nowrap">
-                    <div className="text-xs font-mono text-theme-text-muted">{call.owner_phone || 'N/A'}</div>
+                    <div className="text-xs font-mono text-theme-text-muted">{(call as any).lead_phone || call.owner_phone || call.to_number || 'N/A'}</div>
                   </td>
                   <td className="px-2 py-1 whitespace-nowrap">
                     <div className="text-xs text-theme-text-secondary">{formatDate(call.created_at)}</div>
                   </td>
                   <td className="px-2 py-1 whitespace-nowrap">
+                    {(() => {
+                      // Determinamos el estado exclusivamente por call_successful cuando esté disponible
+                      // Si detectamos contestador por el motivo, considerarlo fallida aunque call_successful sea true
+                      if (isAnsweringMachine(call.disconnection_reason)) {
+                        return (
+                          <div className="flex flex-col">
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-theme-error/10 text-theme-error">Fallida</span>
+                          </div>
+                        )
+                      }
+
+                      if (call.call_successful === true) {
+                        return (
+                          <div className="flex flex-col">
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-theme-success/10 text-theme-success">Exitosa</span>
+                          </div>
+                        )
+                      }
+
+                      if (call.call_successful === false) {
+                        return (
+                          <div className="flex flex-col">
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-theme-error/10 text-theme-error">Fallida</span>
+                          </div>
+                        )
+                      }
+
+                      // Si call_successful no está definido, caer atrás a heurísticas por disposition
+                      const negativeDisps = ['not_interested', 'failed', 'failure', 'hangup', 'wrong_number', 'no_answer', 'owner_not_present']
+                      const positiveDisps = ['new_lead', 'interested', 'possibly_interested', 'successful', 'success', 'sale', 'converted']
+                      const disp = (call.disposition || '').toString().toLowerCase()
+
+                      if (negativeDisps.includes(disp)) {
+                        return (
+                          <div className="flex flex-col">
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-theme-error/10 text-theme-error">Fallida</span>
+                          </div>
+                        )
+                      }
+
+                      if (positiveDisps.includes(disp)) {
+                        return (
+                          <div className="flex flex-col">
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-theme-success/10 text-theme-success">Exitosa</span>
+                          </div>
+                        )
+                      }
+
+                      // Fallback: mostrar N/A
+                      return (
+                        <div className="flex flex-col">
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-theme-surface-hover text-theme-text-muted">N/A</span>
+                        </div>
+                      )
+                    })()}
+                  </td>
+                  <td className="px-2 py-1 whitespace-nowrap">
                     <span className={getStatusBadge(call.disposition)}>
                       {call.disposition || 'N/A'}
                     </span>
-                  </td>
-                  <td className="px-2 py-1 whitespace-nowrap">
-                    <div className="text-xs font-semibold text-theme-text-primary">
-                      {call.agreed_amount ? `$${call.agreed_amount.toLocaleString()}` : 'N/A'}
-                    </div>
                   </td>
                   <td className="px-2 py-1 whitespace-nowrap text-xs text-theme-text-secondary">
                     {(() => {
@@ -807,8 +851,10 @@ export default function ModernCallsTable() {
           onClose={() => {
             setIsAnalysisModalOpen(false);
             setSelectedCallId(null);
+            setSelectedCallData(null);
           }}
           callId={selectedCallId}
+          initialCallData={selectedCallData}
         />
       )}
     </div>

@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Sidebar from '@/components/Sidebar'
+import Header from '@/components/Header'
 
 const formatDuration = (durationMs?: number) => {
   if (!durationMs) return 'N/A'
@@ -17,6 +18,7 @@ const formatDuration = (durationMs?: number) => {
 
 export default function ClienteDetallePage() {
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const params = useParams()
   const phone_number = decodeURIComponent(params?.phone_number as string)
   const [cliente, setCliente] = useState<any>(null)
@@ -46,7 +48,11 @@ export default function ClienteDetallePage() {
   return (
     <div className="min-h-screen bg-theme-surface">
       <Sidebar activeItem="clientes" />
-      <main className="ml-64 p-8">
+      <Header sidebarCollapsed={sidebarCollapsed} currentPage="Clientes" pageTitle="Detalles del Cliente" />
+      <main className={`
+        pt-20 pb-8 px-6 transition-all duration-300
+        ${sidebarCollapsed ? 'ml-20' : 'ml-64'}
+      `}>
         <div className="bg-theme-surface rounded-theme-lg border border-theme-border shadow-lg p-8 w-full">
           <h2 className="text-2xl font-bold text-theme-text-primary mb-8 tracking-tight">Detalles del Cliente</h2>
           {/* <div className="mb-4 text-xs text-theme-text-secondary">Buscando por phone_number: <span className="font-mono">{phone_number}</span></div> */}
@@ -85,43 +91,74 @@ export default function ClienteDetallePage() {
                           {/* Contenido del timeline */}
                           <div className="ml-4 flex-1 min-w-0 cursor-pointer transition-all duration-200 group-hover:translate-x-1"
                             onClick={() => setSelectedCallId(call.call_id || call.id)}>
-                            {/* Fecha y hora principales */}
-                            <div className="mb-2">
-                              <time className="text-sm font-semibold" style={{ color: 'var(--color-textPrimary)' }}>
-                                {fecha ? fecha.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'} • {fecha ? fecha.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : ''}
-                              </time>
-                            </div>
-                            {/* Información principal */}
-                            <div className="flex items-center gap-2 mb-2">
-                              {call.hasCallback && (
-                                <span title="Esta llamada tiene callback asociado" className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                  🔔 Callback
-                                </span>
-                              )}
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-theme-primary/20 text-theme-primary">
-                                {call.disposition || 'N/A'}
-                              </span>
-                              {typeof call.call_successful !== 'undefined' && (
-                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${call.call_successful ? 'bg-theme-success/10 text-theme-success' : 'bg-theme-error/10 text-theme-error'}`}>
-                                  {call.call_successful ? 'Exitosa' : 'Fallida'}
-                                </span>
-                              )}
-                            </div>
-                            {/* Se omiten detalles del cliente (business_name, address, owner_name)
-                                porque ya se muestran en la columna derecha. Mantener solo datos específicos de la llamada. */}
-                            {/* Monto acordado */}
-                            {call.agreed_amount && (
-                              <div className="mt-2">
-                                <span className="text-xs" style={{ color: 'var(--color-textMuted)' }}>
-                                  Monto acordado:
-                                </span>
-                                <span className="text-sm font-bold ml-1" style={{ color: 'var(--color-success)' }}>
-                                  ${call.agreed_amount.toLocaleString()}
-                                </span>
+                            <div className="flex items-start justify-between">
+                              <div className="pr-4 flex-1 min-w-0">
+                                {/* Fecha y hora principales */}
+                                <div className="mb-2">
+                                  <time className="text-sm font-semibold" style={{ color: 'var(--color-textPrimary)' }}>
+                                    {fecha ? fecha.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'} • {fecha ? fecha.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : ''}
+                                  </time>
+                                </div>
+                                {/* Información principal */}
+                                <div className="flex items-center gap-1 mb-2">
+                                  {call.hasCallback && (
+                                    <span title="Esta llamada tiene callback asociado" className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                      🔔 Callback
+                                    </span>
+                                  )}
+                                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-theme-primary/20 text-theme-primary">
+                                    {call.disposition || 'N/A'}
+                                  </span>
+                                  {typeof call.call_successful !== 'undefined' && (
+                                    (() => {
+                                      // Heurística: si la razón de desconexión sugiere contestador automático/voicemail,
+                                      // no consideramos la llamada como realmente 'Exitosa' para evitar confusión.
+                                      const isAnsweringMachine = (reason?: string | null) => {
+                                        if (!reason) return false
+                                        const r = reason.toLowerCase()
+                                        return r.includes('contest') || r.includes('buz') || r.includes('voicemail') || r.includes('answering') || r.includes('contestador')
+                                      }
+
+                                      const consideredSuccessful = !!call.call_successful && !isAnsweringMachine(call.disconnection_reason)
+
+                                      if (consideredSuccessful) {
+                                        return (
+                                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-theme-success/10 text-theme-success`}>
+                                            Exitosa
+                                          </span>
+                                        )
+                                      }
+
+                                      // Si no es considerada exitosa, mostramos "Fallida: motivo" como una sola frase
+                                      return (
+                                        <span className="text-sm font-medium text-theme-error">
+                                          {'Fallida:'}{'\u00A0'}
+                                          {call.disconnection_reason ? (
+                                            <span className="text-xs font-normal text-slate-800">{call.disconnection_reason}</span>
+                                          ) : null}
+                                        </span>
+                                      )
+                                    })()
+                                  )}
+                                </div>
+                                {/* Se omiten detalles del cliente (business_name, address, owner_name)
+                                    porque ya se muestran en la columna derecha. Mantener solo datos específicos de la llamada. */}
+                                {/* Monto acordado */}
+                                {call.agreed_amount && (
+                                  <div className="mt-2">
+                                    <span className="text-xs" style={{ color: 'var(--color-textMuted)' }}>
+                                      Monto acordado:
+                                    </span>
+                                    <span className="text-sm font-bold ml-1" style={{ color: 'var(--color-success)' }}>
+                                      ${call.agreed_amount.toLocaleString()}
+                                    </span>
+                                  </div>
+                                )}
+                                {/* Duración (dato específico de la llamada) */}
+                                <div className="text-xs text-theme-text-secondary">Duración: {formatDuration(call.duration_ms)}</div>
                               </div>
-                            )}
-                            {/* Duración (dato específico de la llamada) */}
-                            <div className="text-xs text-theme-text-secondary">Duración: {formatDuration(call.duration_ms)}</div>
+                              {/* disconnection_reason now shown inline next to the disposition/status */}
+                            </div>
                           </div>
                         </div>
                       );

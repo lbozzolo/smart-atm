@@ -79,8 +79,10 @@ function LlamadasCount({ phoneNumber }: { phoneNumber: string }) {
   return <span className="text-sm font-semibold text-theme-primary">{count !== null ? count : '-'}</span>
 }
 import Sidebar from '@/components/Sidebar'
+import Header from '@/components/Header'
 
 export default function ClientesPage() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   type Lead = {
   phone_number: string
   owner_name?: string
@@ -178,7 +180,11 @@ export default function ClientesPage() {
   return (
     <div className="min-h-screen bg-theme-surface">
       <Sidebar activeItem="clientes" />
-      <main className="ml-64 p-8">
+      <Header sidebarCollapsed={sidebarCollapsed} currentPage="Clientes" pageTitle="Tabla de Clientes" />
+      <main className={`
+        pt-20 pb-8 px-6 transition-all duration-300
+        ${sidebarCollapsed ? 'ml-20' : 'ml-64'}
+      `}>
         <div className="bg-theme-surface rounded-theme-lg border border-theme-border shadow-sm">
           <div className="p-6 border-b border-theme-border flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center space-x-4">

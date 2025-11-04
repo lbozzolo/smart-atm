@@ -45,6 +45,9 @@ export interface CallWithPCAInfo extends Call {
   hasPCA: boolean
   hasCallbacks?: boolean
   duration_ms?: number
+  call_successful?: boolean
+  disconnection_reason?: string | null
+  lead_phone?: string | null
 }
 
 // Definir el tipo de datos para la tabla callbacks
@@ -265,11 +268,26 @@ export async function getCallsWithPagination(params: PaginationParams): Promise<
     const callIds = calls.map(call => call.call_id)
     const { data: pcaData, error: pcaError } = await supabase
   .from('pca')
-  .select('call_id, disposition, duration_ms')
+  .select('call_id, disposition, duration_ms, disconnection_reason, call_successful, created_at')
   .in('call_id', callIds)
-    const pcaDurationMap = new Map(
-      (pcaData || []).map(pca => [pca.call_id, pca.duration_ms])
-    );
+  .order('created_at', { ascending: false })
+
+    // Construir mapas tomando la PCA más reciente por call_id (primera aparición)
+    const pcaDurationMap = new Map<string, number | null>()
+    const pcaDisconnectionMap = new Map<string, string | null>()
+    const pcaCallSuccessMap = new Map<string, boolean | null>()
+    const pcaDispositionMap_temp = new Map<string, string | null>()
+
+    if (pcaData && Array.isArray(pcaData)) {
+      for (const p of pcaData) {
+        if (!pcaDispositionMap_temp.has(p.call_id)) {
+          pcaDurationMap.set(p.call_id, p.duration_ms ?? null)
+          pcaDisconnectionMap.set(p.call_id, p.disconnection_reason ?? null)
+          pcaCallSuccessMap.set(p.call_id, typeof p.call_successful === 'boolean' ? p.call_successful : null)
+          pcaDispositionMap_temp.set(p.call_id, p.disposition ?? null)
+        }
+      }
+    }
 
     if (pcaError) {
       console.error('Error fetching PCA data:', pcaError)
@@ -288,9 +306,35 @@ export async function getCallsWithPagination(params: PaginationParams): Promise<
 
 
     const callsWithPCA = new Set(pcaData?.map(pca => pca.call_id) || [])
-    const pcaDispositionMap = new Map(
-      (pcaData || []).map(pca => [pca.call_id, pca.disposition])
-    )
+    const pcaDispositionMap = pcaDispositionMap_temp
+
+    // Nuevo: intentar rellenar business_name desde la tabla leads cuando falte
+    try {
+      const callToNumbers = calls.map((c: any) => c.to_number).filter(Boolean)
+      let leadsData: any[] = []
+      if (callToNumbers.length > 0) {
+        const { data: ld, error: ldErr } = await supabase
+          .from('leads')
+          .select('phone_number, business_name')
+          .in('phone_number', callToNumbers)
+
+        if (ldErr) {
+          console.warn('Warning fetching leads for business_name fill:', ldErr)
+        } else if (ld) {
+          leadsData = ld
+        }
+      }
+
+  // Mapear phone_number -> lead row completo para usar más campos (business_name, phone, owner, etc.)
+  const leadMap = new Map((leadsData || []).map(l => [l.phone_number, l]))
+
+  // Cuando combinemos abajo podemos preferir call.business_name || leadMap.get(call.to_number)?.business_name
+  // También podremos rellenar lead_phone desde leadMap
+  // attach to a local variable for use later
+  var _leadMap_for_calls = leadMap
+    } catch (err) {
+      console.error('Error fetching leads to fill business_name:', err)
+    }
     
     // Crear mapas separados para nombre y teléfono
     const callbackOwnerNameMap = new Map(
@@ -305,15 +349,29 @@ export async function getCallsWithPagination(params: PaginationParams): Promise<
       const callbackOwnerName = callbackOwnerNameMap.get(call.call_id)
       const callbackOwnerPhone = callbackOwnerPhoneMap.get(call.call_id)
       const pcaDisposition = pcaDispositionMap.get(call.call_id)
-      
+      // Preferir business_name existente en call, si no existe usar el mapping desde leads
+      let businessName = call.business_name
+      try {
+        if ((!businessName || businessName === '') && typeof _leadMap_for_calls !== 'undefined') {
+          const leadRow = _leadMap_for_calls.get(call.to_number)
+          businessName = (leadRow && leadRow.business_name) || businessName
+        }
+      } catch (e) {
+        // ignore
+      }
+
       return {
         ...call,
+        business_name: businessName,
         owner_name: callbackOwnerName || call.owner_name,
         owner_phone: callbackOwnerPhone || call.owner_phone,
+        lead_phone: (typeof _leadMap_for_calls !== 'undefined' && _leadMap_for_calls.get(call.to_number)?.phone_number) || null,
         disposition: pcaDisposition || call.disposition,
         hasPCA: callsWithPCA.has(call.call_id),
         hasCallbacks: callbackOwnerNameMap.has(call.call_id),
-        duration_ms: pcaDurationMap.get(call.call_id) || null
+        duration_ms: pcaDurationMap.get(call.call_id) || null,
+        call_successful: pcaCallSuccessMap.get(call.call_id) ?? call.call_successful ?? null,
+        disconnection_reason: pcaDisconnectionMap.get(call.call_id) || null
       }
     })
 
@@ -446,6 +504,147 @@ export async function getCallDetailsWithPCA(callId: string): Promise<{ call: Cal
 
     // Obtener PCA
     const pcaData = await getPCAByCallId(callId)
+
+    // Intentar enriquecer los datos del cliente desde la tabla `leads` usando el número destino
+    try {
+      if (callData && callData.to_number) {
+        const rawNumber = String(callData.to_number || '')
+        const digitsOnly = rawNumber.replace(/\D/g, '')
+
+        // Debug: always log raw and digits for the example callId so we can see the normalized form
+        if (callId === 'call_878bbde354fbfac2e516ec5ea56') {
+          console.log('🔍 [DEBUG] call rawNumber/digitsOnly ->', { rawNumber, digitsOnly })
+        }
+
+        // 1) Intentar match exacto primero
+        let leadRow: any = null
+        let leadErr: any = null
+
+        const exactMatch = await supabase
+          .from('leads')
+          .select('phone_number, business_name, owner_name, location_type, address_street, address_city, address_state, address_zip, business_hours, other_locations, agreed_amount, owner_phone')
+          .eq('phone_number', rawNumber)
+          .limit(1)
+
+         if (exactMatch.error) {
+          // no fatal, lo guardamos
+          leadErr = exactMatch.error
+        } else if (exactMatch.data && exactMatch.data.length > 0) {
+          leadRow = exactMatch.data[0]
+        }
+
+        if (callId === 'call_878bbde354fbfac2e516ec5ea56') {
+          console.log('🔍 [DEBUG] exactMatch result:', { error: exactMatch.error, count: exactMatch.data?.length })
+        }
+
+        // 2) Si no encontramos por exacto, intentar buscar por sufijo de 8-10 dígitos
+        if (!leadRow && digitsOnly.length >= 6) {
+          const last10 = digitsOnly.slice(-10)
+          // Usamos ilike para buscar cualquier formato que contenga los últimos dígitos
+          const { data: fuzzyData, error: fuzzyErr } = await supabase
+            .from('leads')
+            .select('phone_number, business_name, owner_name, location_type, address_street, address_city, address_state, address_zip, business_hours, other_locations, agreed_amount, owner_phone')
+            .ilike('phone_number', `%${last10}`)
+            .limit(1)
+
+          if (fuzzyErr) {
+            leadErr = fuzzyErr
+          } else if (fuzzyData && fuzzyData.length > 0) {
+            leadRow = fuzzyData[0]
+          }
+
+          if (callId === 'call_878bbde354fbfac2e516ec5ea56') {
+            console.log('🔍 [DEBUG] fuzzyMatch result:', { fuzzyErr, fuzzyCount: fuzzyData?.length, last10 })
+          }
+        }
+
+        // 3) Si aún no encontramos, probar variantes adicionales: quitar prefijo '1' y sufijos más cortos
+        if (!leadRow) {
+          const attempts: Array<{desc: string; pattern: string}> = []
+          // si empieza con '1' y es más largo a 10, probar sin prefijo
+          if (digitsOnly.startsWith('1') && digitsOnly.length > 10) {
+            const without1 = digitsOnly.slice(1)
+            attempts.push({ desc: 'without1_exact', pattern: without1 })
+            attempts.push({ desc: 'without1_last10', pattern: without1.slice(-10) })
+          }
+          // sufijos de 8,7,6
+          const suffixes = [8,7,6]
+          for (const s of suffixes) {
+            if (digitsOnly.length >= s) {
+              attempts.push({ desc: `last${s}`, pattern: digitsOnly.slice(-s) })
+            }
+          }
+
+          for (const att of attempts) {
+            try {
+              const pat = att.pattern
+              if (!pat) continue
+              // probar exacto si longitud coincide (ej: without1_exact)
+              if (att.desc.includes('exact') && pat.length >= 6) {
+                const { data: exData, error: exErr } = await supabase
+                  .from('leads')
+                  .select('phone_number, business_name, owner_name, location_type, address_street, address_city, address_state, address_zip, business_hours, other_locations, agreed_amount, owner_phone')
+                  .eq('phone_number', pat)
+                  .limit(1)
+
+                if (!exErr && exData && exData.length > 0) {
+                  leadRow = exData[0]
+                  if (callId === 'call_878bbde354fbfac2e516ec5ea56') console.log('🔍 [DEBUG] found lead by', att.desc, pat)
+                  break
+                }
+              }
+
+              // probar ilike por sufijo
+              const { data: sData, error: sErr } = await supabase
+                .from('leads')
+                .select('phone_number, business_name, owner_name, location_type, address_street, address_city, address_state, address_zip, business_hours, other_locations, agreed_amount, owner_phone')
+                .ilike('phone_number', `%${pat}`)
+                .limit(1)
+
+              if (!sErr && sData && sData.length > 0) {
+                leadRow = sData[0]
+                if (callId === 'call_878bbde354fbfac2e516ec5ea56') console.log('🔍 [DEBUG] found lead by ilike', att.desc, pat)
+                break
+              }
+            } catch (e) {
+              if (callId === 'call_878bbde354fbfac2e516ec5ea56') console.warn('🔍 [DEBUG] extra attempt error', e)
+            }
+          }
+          if (callId === 'call_878bbde354fbfac2e516ec5ea56' && !leadRow) {
+            console.log('🔍 [DEBUG] no leadRow found after extra attempts for', digitsOnly)
+          }
+        }
+
+        if (!leadErr && leadRow) {
+          if (callId === 'call_878bbde354fbfac2e516ec5ea56') {
+            console.log('🔎 [DEBUG] matched leadRow for callId', callId, { rawNumber, digitsOnly, leadRow })
+          }
+          // Preferir los valores de leads cuando existan
+          callData.business_name = callData.business_name || leadRow.business_name
+          callData.owner_name = callData.owner_name || leadRow.owner_name
+          callData.owner_email = callData.owner_email || leadRow.owner_email
+          callData.location_type = callData.location_type || leadRow.location_type
+          callData.address_street = callData.address_street || leadRow.address_street
+          callData.address_city = callData.address_city || leadRow.address_city
+          callData.address_state = callData.address_state || leadRow.address_state
+          callData.address_zip = callData.address_zip || leadRow.address_zip
+          callData.business_hours = callData.business_hours || leadRow.business_hours
+          callData.other_locations = callData.other_locations || leadRow.other_locations
+          callData.agreed_amount = callData.agreed_amount || leadRow.agreed_amount
+          callData.owner_phone = callData.owner_phone || leadRow.owner_phone || leadRow.phone_number
+          // Also keep the raw lead phone for explicit use in the UI
+          ;(callData as any).lead_phone = leadRow.phone_number || null
+          // Also keep lead business name explicitly for UI priority
+          ;(callData as any).lead_business_name = leadRow.business_name || null
+          // Keep the raw lead owner name separately so the UI can prefer lead values explicitly
+          ;(callData as any).lead_owner_name = leadRow.owner_name || null
+        } else if (leadErr) {
+          console.warn('Warning fetching leads for callDetails:', leadErr)
+        }
+      }
+    } catch (err) {
+      console.warn('Warning: could not enrich callData with leads:', err)
+    }
 
     if (callbackData && !callbackError) {
       // Es una call que TAMBIÉN es un callback
@@ -1097,6 +1296,9 @@ export interface CallInteraction {
   address_city?: string
   address_state?: string
   callback_time?: string
+  call_successful?: boolean
+  duration_ms?: number | null
+  disconnection_reason?: string | null
   created_at?: string
   date: string
   display_date: string
@@ -1139,25 +1341,25 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
     // Obtener dispositions del PCA para las calls
   let pcaMap = new Map()
   let pcaSuccessMap = new Map()
+  let pcaDurationMap = new Map<string, number | null>()
+  let pcaDisconnectionMap = new Map<string, string | null>()
     let callbackMap = new Map()
     
     if (calls && calls.length > 0) {
       const callIds = calls.map(call => call.call_id)
       
-      // Obtener dispositions y duración del PCA
+      // Obtener dispositions, duración y razón de desconexión del PCA
       const { data: pcaData } = await supabase
         .from('pca')
-        .select('call_id, disposition, call_successful, duration_ms')
+        .select('call_id, disposition, call_successful, duration_ms, disconnection_reason')
         .in('call_id', callIds)
-      
+
       if (pcaData) {
         pcaData.forEach(pca => {
           pcaMap.set(pca.call_id, pca.disposition)
           pcaSuccessMap.set(pca.call_id, pca.call_successful)
-          // Guardar duración si existe
-          if (typeof pca.duration_ms !== 'undefined') {
-            pcaMap.set(`${pca.call_id}::duration_ms`, pca.duration_ms)
-          }
+          pcaDurationMap.set(pca.call_id, typeof pca.duration_ms !== 'undefined' ? pca.duration_ms : null)
+          pcaDisconnectionMap.set(pca.call_id, typeof pca.disconnection_reason !== 'undefined' ? pca.disconnection_reason : null)
         })
       }
       
@@ -1187,10 +1389,11 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
       // Procesar todas las calls e indicar si tienen callback asociado
       ...(calls || []).map(call => {
         const hasCallback = callbackMap.has(call.call_id)
-        const pcaDisposition = pcaMap.get(call.call_id) || call.disposition
-        const callSuccessful = pcaSuccessMap.has(call.call_id) ? pcaSuccessMap.get(call.call_id) : call.call_successful
-        // Intentar obtener duration_ms desde PCA si está disponible
-        const pcaDuration = pcaMap.has(`${call.call_id}::duration_ms`) ? pcaMap.get(`${call.call_id}::duration_ms`) : undefined
+  const pcaDisposition = pcaMap.get(call.call_id) || call.disposition
+  const callSuccessful = pcaSuccessMap.has(call.call_id) ? pcaSuccessMap.get(call.call_id) : call.call_successful
+  // Intentar obtener duration_ms desde PCA si está disponible
+  const pcaDuration = pcaDurationMap.has(call.call_id) ? pcaDurationMap.get(call.call_id) : undefined
+  const pcaDisconnection = pcaDisconnectionMap.has(call.call_id) ? pcaDisconnectionMap.get(call.call_id) : undefined
 
         // Use created_at as the canonical date when available to avoid duplication and allow proper sorting
         const canonicalDate = call.created_at || call.call_id || ''
@@ -1204,6 +1407,7 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
           disposition: pcaDisposition,
           call_successful: callSuccessful,
           duration_ms: typeof pcaDuration !== 'undefined' ? pcaDuration : call.duration_ms,
+          disconnection_reason: typeof pcaDisconnection !== 'undefined' ? pcaDisconnection : call.disconnection_reason,
           hasCallback
         }
 
@@ -1224,8 +1428,9 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
         return true
       }).map(callback => {
         const associatedCall = calls?.find(call => call.call_id === callback.call_id)
-        const pcaDisposition = associatedCall ? (pcaMap.get(callback.call_id) || associatedCall.disposition) : callback.disposition
-        const callSuccessful = associatedCall ? (pcaSuccessMap.has(callback.call_id) ? pcaSuccessMap.get(callback.call_id) : associatedCall.call_successful) : undefined
+  const pcaDisposition = associatedCall ? (pcaMap.get(callback.call_id) || associatedCall.disposition) : callback.disposition
+  const callSuccessful = associatedCall ? (pcaSuccessMap.has(callback.call_id) ? pcaSuccessMap.get(callback.call_id) : associatedCall.call_successful) : undefined
+  const pcaDisconnection = associatedCall ? (pcaDisconnectionMap.get(callback.call_id) || associatedCall.disconnection_reason) : callback.disconnection_reason
 
         const result = {
           ...callback,
@@ -1241,12 +1446,14 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
             owner_phone: associatedCall.owner_phone,
             agreed_amount: associatedCall.agreed_amount,
             disposition: pcaDisposition,
-            call_successful: callSuccessful
+            call_successful: callSuccessful,
+            disconnection_reason: pcaDisconnection
           } : {
             business_name: callback.business_name,
             owner_name: callback.callback_owner_name,
             agreed_amount: undefined,
-            disposition: callback.disposition
+            disposition: callback.disposition,
+            disconnection_reason: callback.disconnection_reason
           }),
           callback_time: callback.callback_time,
           callback_owner_name: callback.callback_owner_name
