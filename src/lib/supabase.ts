@@ -388,8 +388,11 @@ export async function getCallsWithPagination(params: PaginationParams): Promise<
       )
     }
 
-    // Calcular el total correcto después de aplicar filtros
-    const finalTotal = filteredCalls.length
+  // Calcular el total correcto después de aplicar filtros
+  // Si no se aplicó filtrado post-query, la consulta al servidor devolvió `count` con el total
+  // completo; en ese caso preferimos usar `count` para calcular totalPages. Si se aplicó
+  // filtrado post-query, `filteredCalls.length` ya representa el total después del filtro.
+  const finalTotal = needsPostQueryFiltering ? filteredCalls.length : (count || filteredCalls.length)
     
     // Si el ordenamiento es por disposition, hacerlo aquí después de combinar los datos
     if (params.sortBy === 'disposition') {
