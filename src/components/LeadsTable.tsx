@@ -6,7 +6,11 @@ import { Lead, getLeadsWithPagination, getCallHistoryByPhone, Call, CallInteract
 import React from 'react'
 
 // LeadsTable removed — archived to /archive/leads/
-export default function LeadsTable() {
+interface LeadsTableProps {
+  onCallSelect?: (call: Call) => void
+}
+
+export default function LeadsTable({ onCallSelect }: LeadsTableProps) {
   return (
     <div className="p-6">
       <div className="rounded-xl p-6 border shadow-sm" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
