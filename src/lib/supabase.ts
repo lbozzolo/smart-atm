@@ -846,6 +846,41 @@ export async function getCallBasic(callId: string) {
   }
 }
 
+// Enhanced lightweight call fetch: include lead owner_name (if exists) to support modal autocomplete
+export async function getCallBasicWithLead(callId: string) {
+  try {
+    const callRow = await getCallBasic(callId)
+    if (!callRow) return null
+
+    // Try to fetch lead by to_number to pull lead.owner_name without doing heavy fuzzy searches
+    try {
+      const toNumber = String((callRow as any).to_number || '')
+      if (toNumber) {
+        const { data: leadRow, error: leadErr } = await supabase
+          .from('leads')
+          .select('owner_name')
+          .eq('phone_number', toNumber)
+          .limit(1)
+
+        if (!leadErr && leadRow && Array.isArray(leadRow) && leadRow.length > 0) {
+          ;(callRow as any).lead_owner_name = leadRow[0].owner_name || null
+        } else {
+          ;(callRow as any).lead_owner_name = null
+        }
+      } else {
+        ;(callRow as any).lead_owner_name = null
+      }
+    } catch (e) {
+      ;(callRow as any).lead_owner_name = null
+    }
+
+    return callRow
+  } catch (err) {
+    console.error('Error in getCallBasicWithLead:', err)
+    throw err
+  }
+}
+
 // Actualizar campos de una fila PCA por id
 export async function updatePcaById(id: string, fields: Partial<PCA>) {
   try {

@@ -1,7 +1,7 @@
  'use client'
 
 import { useEffect, useState } from 'react'
-import { getCallbacksByCallId, getCallDetailsWithPCA, updateCallbackById, createCallback, getLatestPcaByCallId, updatePcaById, getLatestPcaTranscriptByCallId, getCallBasic, type Callback, type PCA } from '@/lib/supabase'
+import { getCallbacksByCallId, getCallDetailsWithPCA, updateCallbackById, createCallback, getLatestPcaByCallId, updatePcaById, getLatestPcaTranscriptByCallId, getCallBasicWithLead, type Callback, type PCA } from '@/lib/supabase'
 
 interface CallbacksModalProps {
   isOpen: boolean
@@ -50,7 +50,8 @@ export default function CallbacksModal({ isOpen, onClose, callId, source }: Call
   useEffect(() => {
     // Si abrimos desde possibly_interested, prellenar formulario con datos de la llamada
     if (isOpen && source === 'possibly_interested' && callData) {
-      setFormOwnerName(callData.owner_name || callData.agent_name || '')
+      // Autocompletar con owner_name desde la tabla leads si existe; NO usar agent_name como fallback
+      setFormOwnerName((callData as any).lead_owner_name || '')
       setFormOwnerPhone(callData.to_number || callData.owner_phone || '')
       setFormTimeText('')
       setPiChoice(null)
@@ -66,7 +67,7 @@ export default function CallbacksModal({ isOpen, onClose, callId, source }: Call
         // flujo optimizado: sólo necesitamos transcript/recording y algunos campos básicos de call
         const [pcaRow, basicCall] = await Promise.all([
           getLatestPcaTranscriptByCallId(callId),
-          getCallBasic(callId)
+          getCallBasicWithLead(callId)
         ])
 
         setCallbacks([])
@@ -181,7 +182,7 @@ export default function CallbacksModal({ isOpen, onClose, callId, source }: Call
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => { setPiChoice(true); setPiError(null); setFormOwnerName(callData?.owner_name || callData?.agent_name || ''); setFormOwnerPhone(callData?.callback_owner_phone || callData?.to_number || callData?.owner_phone || ''); }}
+                onClick={() => { setPiChoice(true); setPiError(null); setFormOwnerName((callData as any)?.lead_owner_name || ''); setFormOwnerPhone(callData?.callback_owner_phone || callData?.to_number || callData?.owner_phone || ''); }}
                 className="px-3 py-1 bg-theme-success/10 text-theme-success rounded text-sm font-medium"
               >
                 Sí
@@ -275,7 +276,7 @@ export default function CallbacksModal({ isOpen, onClose, callId, source }: Call
             <div className="bg-white p-4 rounded border border-slate-200 space-y-2">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs text-theme-text-muted">Propietario del callback</label>
+                  <label className="block text-xs text-theme-text-muted">Nombre del propietario</label>
                   <input value={formOwnerName} onChange={(e) => setFormOwnerName(e.target.value)} className="w-full px-2 py-2 border rounded text-sm" />
                 </div>
                 <div>
@@ -477,7 +478,7 @@ export default function CallbacksModal({ isOpen, onClose, callId, source }: Call
                         <div className="bg-white p-4 rounded border border-slate-200 space-y-2">
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <div>
-                              <label className="block text-xs text-theme-text-muted">Propietario del callback</label>
+                              <label className="block text-xs text-theme-text-muted">Nombre del propietario</label>
                               <input value={formOwnerName} onChange={(e) => setFormOwnerName(e.target.value)} className="w-full px-2 py-2 border rounded text-sm" />
                             </div>
                             <div>
