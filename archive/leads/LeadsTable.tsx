@@ -683,4 +683,43 @@ export default function LeadsTable({ onCallSelect }: LeadsTableProps) {
                                                 minute: '2-digit'
                                               })}
                                             </time>
-*** End Patch
+                                          </div>
+                                          <div className="text-sm" style={{ color: 'var(--color-textSecondary)' }}>
+                                            {interaction.disposition || '—'}{interaction.notes ? ` — ${interaction.notes}` : ''}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Pagination */}
+      <div className="flex items-center justify-between p-4" style={{ borderTop: '1px solid var(--color-border)' }}>
+        <div style={{ color: 'var(--color-textSecondary)' }}>
+          Página {currentPage} de {totalPages} — {totalCount} resultados
+        </div>
+        <div className="flex items-center space-x-2">
+          <button onClick={() => setCurrentPage(prev => Math.max(1, prev-1))} disabled={!hasPreviousPage} className="px-3 py-1 rounded-lg border" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+            ← Anterior
+          </button>
+          <button onClick={() => setCurrentPage(prev => prev+1)} disabled={!hasNextPage} className="px-3 py-1 rounded-lg border" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+            Siguiente →
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
