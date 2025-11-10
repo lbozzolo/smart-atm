@@ -154,6 +154,8 @@ export default function AnalysisModal({ isOpen, onClose, callId, initialCallData
     if (!disposition) return 'bg-theme-surface-hover text-theme-text-muted border-theme-border'
     
     switch (disposition.toLowerCase()) {
+      case 'possibly_interested':
+        return 'bg-theme-success/10 text-theme-success border-theme-success/20'
       case 'sale':
       case 'interested':
       case 'appointment':

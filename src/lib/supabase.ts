@@ -61,7 +61,8 @@ export interface Callback {
   company_id?: string
   agent_id?: string
   disposition?: string
-  callback_owner_name: string
+  callback_owner_name?: string
+  callback_owner_phone?: string
   callback_time?: string
   callback_window_note?: string
   payload?: any
@@ -496,22 +497,181 @@ export async function getAllCallbacks(page = 1, limit = 50, filters?: CallbacksF
       query = query.lte('created_at', filters.dateTo)
     }
 
-    const { data, count, error } = await query.range(offset, offset + limit - 1)
+  const { data, count, error } = await query.range(offset, offset + limit - 1)
 
     if (error) {
       console.error('Error fetching callbacks paginated:', error)
       throw error
     }
 
+    // Attach business_name from leads (matching by phone_number = callbacks.to_number)
+    const callbacksData = data || []
+    try {
+      const toNumbers = Array.from(new Set(callbacksData.map((r: any) => r.to_number).filter(Boolean)))
+      if (toNumbers.length > 0) {
+        const { data: leadsRows } = await supabase
+          .from('leads')
+          .select('phone_number, business_name')
+          .in('phone_number', toNumbers)
+
+        const leadsByPhone: Record<string, any> = {}
+        if (Array.isArray(leadsRows)) {
+          for (const l of leadsRows) {
+            if (l && l.phone_number) leadsByPhone[l.phone_number] = l
+          }
+        }
+
+        for (const r of callbacksData) {
+          const lead = leadsByPhone[r.to_number]
+          if (lead && lead.business_name) r.business_name = lead.business_name
+        }
+      }
+    } catch (e) {
+      console.warn('Warning: no se pudo adjuntar business_name a callbacks desde leads:', e)
+    }
+
     return {
-      data: data || [],
-      total: count || (data ? data.length : 0),
+      data: callbacksData,
+      total: count || (callbacksData ? callbacksData.length : 0),
       page,
       limit,
-      totalPages: Math.ceil((count || (data ? data.length : 0)) / limit)
+      totalPages: Math.ceil((count || (callbacksData ? callbacksData.length : 0)) / limit)
     }
   } catch (err) {
     console.error('Error in getAllCallbacks:', err)
+    throw err
+  }
+}
+
+// Obtener llamadas (calls) con disposition = 'possibly_interested' que NO tengan callbacks asociados
+export async function getPossiblyInterestedCallsWithoutCallbacks(page = 1, limit = 50, filters?: { search?: string, dateFrom?: string, dateTo?: string }) {
+  try {
+    const offset = (page - 1) * limit
+
+    // 1) Obtener call_ids desde PCA con disposition = 'possibly_interested'
+    const { data: pcaData, error: pcaErr } = await supabase
+      .from('pca')
+      .select('call_id')
+      .eq('disposition', 'possibly_interested')
+
+    if (pcaErr) {
+      console.error('Error fetching PCA call_ids:', pcaErr)
+      throw pcaErr
+    }
+
+    const pcaIds = Array.isArray(pcaData) ? Array.from(new Set(pcaData.map((r: any) => r.call_id).filter(Boolean))) : []
+
+    if (pcaIds.length === 0) {
+      return { data: [], total: 0, page, limit, totalPages: 0 }
+    }
+
+    // 2) Obtener call_ids que ya tienen callbacks
+    const { data: cbIdsData, error: cbErr } = await supabase
+      .from('callbacks')
+      .select('call_id')
+
+    if (cbErr) {
+      console.error('Error fetching callback call_ids:', cbErr)
+      throw cbErr
+    }
+
+    const cbIds = Array.isArray(cbIdsData) ? cbIdsData.map((r: any) => r.call_id).filter(Boolean) : []
+
+    // 3) Filtrar pcaIds para excluir aquellos con callbacks
+    const targetIds = pcaIds.filter((id: string) => !cbIds.includes(id))
+
+    if (targetIds.length === 0) {
+      return { data: [], total: 0, page, limit, totalPages: 0 }
+    }
+
+    // 4) Consultar calls cuya call_id esté en targetIds
+    let query: any = supabase
+      .from('calls')
+      .select('*', { count: 'exact' })
+      .in('call_id', targetIds)
+      .order('created_at', { ascending: false })
+
+    if (filters?.search) {
+      const s = filters.search.replace(/%/g, '\\%')
+      query = query.or(`to_number.ilike.%${s}%,agent_name.ilike.%${s}%,business_name.ilike.%${s}%`)
+    }
+
+    if (filters?.dateFrom) query = query.gte('created_at', filters.dateFrom)
+    if (filters?.dateTo) query = query.lte('created_at', filters.dateTo)
+
+    const { data, count, error } = await query.range(offset, offset + limit - 1)
+
+    if (error) {
+      console.error('Error fetching possibly_interested calls without callbacks:', error)
+      throw error
+    }
+
+  // Adjuntar disposition desde PCA (última entrada por call_id) para mostrar en la UI
+    const callsData = data || []
+
+    try {
+      const { data: pcaRows } = await supabase
+        .from('pca')
+        .select('call_id, disposition, created_at')
+        .in('call_id', targetIds)
+        .order('created_at', { ascending: false })
+
+      const latestPcaByCall: Record<string, any> = {}
+      if (Array.isArray(pcaRows)) {
+        for (const row of pcaRows) {
+          const cid = row.call_id
+          if (!latestPcaByCall[cid]) {
+
+    
+            latestPcaByCall[cid] = row
+          }
+        }
+      }
+
+      // Attach disposition from PCA if present
+      for (const c of callsData) {
+        const p = latestPcaByCall[c.call_id]
+        if (p && p.disposition) c.disposition = p.disposition
+      }
+    } catch (e) {
+      // no fatal: seguimos devolviendo llamadas sin disposition desde PCA
+      console.warn('Warning: no se pudo adjuntar PCA.disposition:', e)
+    }
+
+    // Adjuntar business_name desde tabla leads (matching via calls.to_number = leads.phone_number)
+    try {
+      const toNumbers = Array.from(new Set(callsData.map((c: any) => c.to_number).filter(Boolean)))
+      if (toNumbers.length > 0) {
+        const { data: leadsRows } = await supabase
+          .from('leads')
+          .select('phone_number, business_name')
+          .in('phone_number', toNumbers)
+
+        const leadsByPhone: Record<string, any> = {}
+        if (Array.isArray(leadsRows)) {
+          for (const l of leadsRows) {
+            if (l && l.phone_number) leadsByPhone[l.phone_number] = l
+          }
+        }
+
+        for (const c of callsData) {
+          const lead = leadsByPhone[c.to_number]
+          if (lead && lead.business_name) c.business_name = lead.business_name
+        }
+      }
+    } catch (e) {
+      console.warn('Warning: no se pudo adjuntar business_name desde leads:', e)
+    }
+
+    return {
+      data: callsData,
+      total: count || (callsData ? callsData.length : 0),
+      page,
+      limit,
+      totalPages: Math.ceil((count || (callsData ? callsData.length : 0)) / limit)
+    }
+  } catch (err) {
+    console.error('Error in getPossiblyInterestedCallsWithoutCallbacks:', err)
     throw err
   }
 }
@@ -558,6 +718,47 @@ export async function updateCallbackDisposition(id: string, disposition: string)
   }
 }
 
+// Actualizar campos arbitrarios de un callback por id
+export async function updateCallbackById(id: string, fields: Partial<Callback>) {
+  try {
+    const { data, error } = await supabase
+      .from('callbacks')
+      .update(fields)
+      .eq('id', id)
+      .single()
+
+    if (error) {
+      console.error('Error updating callback fields:', error)
+      throw error
+    }
+
+    return data
+  } catch (err) {
+    console.error('Error in updateCallbackById:', err)
+    throw err
+  }
+}
+
+// Crear un nuevo callback
+export async function createCallback(fields: Partial<Callback>) {
+  try {
+    const { data, error } = await supabase
+      .from('callbacks')
+      .insert([fields])
+      .select()
+
+    if (error) {
+      console.error('Error creating callback:', error)
+      throw error
+    }
+
+    return Array.isArray(data) ? data[0] : data
+  } catch (err) {
+    console.error('Error in createCallback:', err)
+    throw err
+  }
+}
+
 // Función para obtener análisis PCA por call_id
 export async function getPCAByCallId(callId: string): Promise<PCA[]> {
   try {
@@ -576,6 +777,93 @@ export async function getPCAByCallId(callId: string): Promise<PCA[]> {
   } catch (error) {
     console.error('Error in getPCAByCallId:', error)
     throw error
+  }
+}
+
+// Obtener la fila PCA más reciente para una call_id
+export async function getLatestPcaByCallId(callId: string) {
+  try {
+    const { data, error } = await supabase
+      .from('pca')
+      // full row (useful for updates) — heavy; prefer getLatestPcaTranscriptByCallId for read-only transcript
+      .select('*')
+      .eq('call_id', callId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    if (error) {
+      console.error('Error fetching latest PCA row:', error)
+      throw error
+    }
+
+    return Array.isArray(data) && data.length > 0 ? data[0] : null
+  } catch (err) {
+    console.error('Error in getLatestPcaByCallId:', err)
+    throw err
+  }
+}
+
+// Helper ligero: obtener sólo los campos de transcript/recording de la PCA más reciente
+export async function getLatestPcaTranscriptByCallId(callId: string) {
+  try {
+    const { data, error } = await supabase
+      .from('pca')
+      .select('id, call_id, transcript, recording_url, recording_multi_channel_url, created_at')
+      .eq('call_id', callId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    if (error) {
+      console.error('Error fetching latest PCA transcript row:', error)
+      throw error
+    }
+
+    return Array.isArray(data) && data.length > 0 ? data[0] : null
+  } catch (err) {
+    console.error('Error in getLatestPcaTranscriptByCallId:', err)
+    throw err
+  }
+}
+
+// Helper ligero: obtener solo campos básicos de la llamada (evitar joins/ilike costosos)
+export async function getCallBasic(callId: string) {
+  try {
+    const { data, error } = await supabase
+      .from('calls')
+      .select('call_id, to_number, owner_name, agent_name, created_at, business_name')
+      .eq('call_id', callId)
+      .single()
+
+    if (error) {
+      console.error('Error fetching basic call data:', error)
+      throw error
+    }
+
+    return data || null
+  } catch (err) {
+    console.error('Error in getCallBasic:', err)
+    throw err
+  }
+}
+
+// Actualizar campos de una fila PCA por id
+export async function updatePcaById(id: string, fields: Partial<PCA>) {
+  try {
+    const { data, error } = await supabase
+      .from('pca')
+      .update(fields)
+      .eq('id', id)
+      .single()
+
+    if (error) {
+      console.error('Error updating PCA row:', error)
+      throw error
+    }
+
+    return data
+  } catch (err) {
+    console.error('Error in updatePcaById:', err)
+    throw err
   }
 }
 

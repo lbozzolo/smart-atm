@@ -20,25 +20,97 @@ export default function ImportacionPage() {
     setResult(null)
     try {
       const text = await file.text()
-      const rows = text.split('\n').map(row => row.split(','))
-      const headers = rows[0].map(h => h.trim())
-      // Parsear datos y eliminar duplicados internos del archivo
-      const data: any[] = rows.slice(1).map(row => {
-        const obj: any = {}
-        headers.forEach((h, i) => {
-          if (h === 'phone_number') {
-            // Normalizar: solo dígitos
-            obj[h] = row[i]?.replace(/\D/g, '') || ''
+
+      // Detectar delimitador (coma/; / tab)
+      const firstLine = text.split(/\r?\n/)[0] || ''
+      const counts = {
+        ',': (firstLine.match(/,/g) || []).length,
+        ';': (firstLine.match(/;/g) || []).length,
+        '\t': (firstLine.match(/\t/g) || []).length
+      }
+      let delimiter = ','
+      if (counts[';'] > counts[',']) delimiter = ';'
+      if (counts['\t'] > counts[delimiter]) delimiter = '\t'
+
+      // Simple parser de líneas que respeta comillas dobles y duplicados de comilla
+      const splitLine = (line: string) => {
+        const out: string[] = []
+        let cur = ''
+        let inQuotes = false
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i]
+          if (ch === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+              cur += '"'
+              i++
+            } else {
+              inQuotes = !inQuotes
+            }
+          } else if (ch === delimiter && !inQuotes) {
+            out.push(cur)
+            cur = ''
           } else {
-            obj[h] = row[i]?.trim() || ''
+            cur += ch
           }
-        })
-        return obj
-      })
+        }
+        out.push(cur)
+        return out.map(s => s.trim())
+      }
+
+      const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0)
+      if (lines.length === 0) {
+        setResult('Archivo vacío')
+        setImporting(false)
+        return
+      }
+
+      const rawHeaders = splitLine(lines[0]).map(h => h.replace(/^\uFEFF/, '').trim())
+
+      // Mapear aliases a los campos esperados
+      const aliasMap: Record<string, string[]> = {
+        phone_number: ['phone_number','phone','customer_phone','customer phone','customer_phone_number','telefono','celular'],
+        owner_name: ['owner_name','owner','owner name','propietario'],
+        business_name: ['business_name','business','business name','company','negocio'],
+        address: ['address','street','direccion','address_street'],
+        location_type: ['location_type','location type','type','loc_type'],
+        timezone: ['timezone','tz'],
+        email: ['email','owner_email','email_address']
+      }
+
+      const headerLower = rawHeaders.map(h => h.toLowerCase())
+      const headerIndex: Record<string, number> = {}
+      for (const key of Object.keys(aliasMap)) {
+        const aliases = aliasMap[key]
+        let found = -1
+        for (const a of aliases) {
+          const idx = headerLower.indexOf(a.toLowerCase())
+          if (idx !== -1) { found = idx; break }
+        }
+        if (found !== -1) headerIndex[key] = found
+      }
+
+      // Build data objects using mapped indices
+      const data: any[] = []
+      for (let i = 1; i < lines.length; i++) {
+        const row = splitLine(lines[i])
+        const obj: any = {}
+        // fill requested fields if present
+        for (const field of Object.keys(aliasMap)) {
+          const idx = headerIndex[field]
+          const raw = (idx !== undefined) ? (row[idx] || '') : ''
+          if (field === 'phone_number') {
+            obj[field] = (raw || '').replace(/\D/g, '')
+          } else {
+            obj[field] = (raw || '').trim()
+          }
+        }
+        data.push(obj)
+      }
       const uniqueDataMap = new Map<string, any>()
       data.forEach((d: any) => {
-        if (d.phone_number && !uniqueDataMap.has(d.phone_number)) {
-          uniqueDataMap.set(d.phone_number, d)
+        const num = d.phone_number || ''
+        if (num && !uniqueDataMap.has(num)) {
+          uniqueDataMap.set(num, d)
         }
       })
       const uniqueData = Array.from(uniqueDataMap.values())

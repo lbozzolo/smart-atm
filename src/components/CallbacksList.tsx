@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { getAllCallbacks, deleteCallbackById, updateCallbackDisposition } from '@/lib/supabase'
+import { getAllCallbacks, deleteCallbackById, updateCallbackDisposition, getPossiblyInterestedCallsWithoutCallbacks } from '@/lib/supabase'
 import CallbacksModal from './CallbacksModal'
 
 interface CallbackRow {
@@ -15,6 +15,9 @@ interface CallbackRow {
   call_started_at?: string
   disposition?: string
   created_at?: string
+  business_name?: string
+  lead_business_name?: string
+  business?: string
 }
 
 export default function CallbacksList() {
@@ -28,9 +31,13 @@ export default function CallbacksList() {
   const [dateTo, setDateTo] = useState('')
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
+  const [possiblyCalls, setPossiblyCalls] = useState<any[]>([])
+  const [possiblyTotal, setPossiblyTotal] = useState(0)
+  const [possiblyTotalPages, setPossiblyTotalPages] = useState(1)
   const [loading, setLoading] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [modalCallId, setModalCallId] = useState<string | null>(null)
+  const [activeView, setActiveView] = useState<'callbacks' | 'possibly_interested'>('callbacks')
   async function load(pageToLoad = 1, useFilters = true) {
     setLoading(true)
     try {
@@ -41,10 +48,21 @@ export default function CallbacksList() {
         dateTo: dateTo || undefined
       } : undefined
 
-      const res: any = await getAllCallbacks(pageToLoad, limit, filters)
-      setCallbacks(res.data || [])
-      setTotal(res.total || 0)
-      setTotalPages(res.totalPages || 1)
+      if (activeView === 'possibly_interested') {
+        const res: any = await getPossiblyInterestedCallsWithoutCallbacks(pageToLoad, limit, {
+          search: filters?.search,
+          dateFrom: filters?.dateFrom,
+          dateTo: filters?.dateTo
+        })
+        setPossiblyCalls(res.data || [])
+        setPossiblyTotal(res.total || 0)
+        setPossiblyTotalPages(res.totalPages || 1)
+      } else {
+        const res: any = await getAllCallbacks(pageToLoad, limit, filters)
+        setCallbacks(res.data || [])
+        setTotal(res.total || 0)
+        setTotalPages(res.totalPages || 1)
+      }
       setPage(pageToLoad)
     } catch (err) {
       console.error('Error loading callbacks:', err)
@@ -56,6 +74,20 @@ export default function CallbacksList() {
   useEffect(() => {
     load(1)
   }, [])
+
+  const colCount = activeView === 'possibly_interested' ? 5 : 7
+
+  // Cuando cambia la vista (pestaña), ajustar filtro y recargar
+  useEffect(() => {
+    if (activeView === 'possibly_interested') {
+      setFilterDisposition('possibly_interested')
+      load(1, true)
+    } else {
+      // regresar a la vista por defecto sin forzar disposition
+      setFilterDisposition('')
+      load(1, false)
+    }
+  }, [activeView])
 
   function applyFilters() {
     load(1, true)
@@ -95,6 +127,8 @@ export default function CallbacksList() {
   const getDispositionColor = (disposition?: string | null) => {
     if (!disposition) return 'bg-theme-surface-hover text-theme-text-muted border-theme-border'
     switch (disposition.toLowerCase()) {
+      case 'possibly_interested':
+        return 'bg-theme-success/10 text-theme-success border-theme-success/20'
       case 'sale':
       case 'interested':
       case 'appointment':
@@ -123,7 +157,7 @@ export default function CallbacksList() {
         <div className="flex items-center space-x-4">
           <h2 className="text-xl font-bold text-theme-text-primary">Tabla de Callbacks</h2>
           <span className="px-3 py-1 bg-theme-primary/10 text-theme-primary rounded-full text-sm font-medium">
-            {total.toLocaleString()} resultados
+            {(activeView === 'possibly_interested' ? possiblyTotal : total).toLocaleString()} resultados
           </span>
         </div>
         <div className="text-sm text-theme-text-muted">&nbsp;</div>
@@ -131,6 +165,21 @@ export default function CallbacksList() {
 
       {/* Filters row */}
       <div className="p-4 border-b border-theme-border bg-theme-surface">
+        {/* Pestañas: callbacks / possibly_interested */}
+        <div className="mb-3">
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setActiveView('callbacks')}
+              className={`px-3 py-1 rounded text-sm font-medium ${activeView === 'callbacks' ? 'bg-theme-primary text-white' : 'text-theme-text-secondary hover:bg-theme-primary/10'}`}>
+              Callbacks pendientes
+            </button>
+            <button
+              onClick={() => setActiveView('possibly_interested')}
+              className={`px-3 py-1 rounded text-sm font-medium ${activeView === 'possibly_interested' ? 'bg-theme-primary text-white' : 'text-theme-text-secondary hover:bg-theme-primary/10'}`}>
+              Posiblemente interesados
+            </button>
+          </div>
+        </div>
         <div className="flex flex-col md:flex-row md:items-center md:space-x-4 gap-3">
           <div className="flex-1 min-w-0">
             <input
@@ -166,28 +215,81 @@ export default function CallbacksList() {
           <thead className="bg-theme-surface-hover sticky top-0 z-10">
             <tr>
               <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-28">Teléfono</th>
+              <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-48">Negocio</th>
               <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-40">Fecha</th>
-              <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-40">Owner</th>
-              <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-56">Callback time</th>
+              {activeView !== 'possibly_interested' && (
+                <>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-40">Owner</th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-56">Callback time</th>
+                </>
+              )}
               <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-40">Disposition</th>
               <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-32">Acciones</th>
             </tr>
           </thead>
           <tbody className="bg-theme-surface divide-y divide-theme-border">
             {loading ? (
-              <tr><td colSpan={6} className="p-8 text-center">
+              <tr><td colSpan={colCount} className="p-8 text-center">
                 <div className="inline-flex items-center space-x-2">
                   <div className="w-6 h-6 border-2 border-theme-primary border-t-transparent rounded-full animate-spin"></div>
-                  <span className="text-theme-text-secondary">Cargando callbacks...</span>
+                  <span className="text-theme-text-secondary">Cargando...</span>
                 </div>
               </td></tr>
+            ) : activeView === 'possibly_interested' ? (
+              possiblyCalls.length === 0 ? (
+                <tr><td colSpan={colCount} className="p-8 text-center text-theme-text-secondary">No hay llamadas posiblemente interesadas sin callbacks.</td></tr>
+              ) : (
+                possiblyCalls.map((call: any) => (
+                  <tr key={call.call_id} className="hover:bg-theme-surface-hover transition-colors">
+                    <td className="px-2 py-1 align-top break-words">
+                      <div className="text-xs font-mono text-theme-text-muted break-words whitespace-normal">{call.to_number || '-'}</div>
+                    </td>
+                    <td className="px-2 py-1 align-top break-words">
+                      <div className="text-xs text-theme-text-primary break-words whitespace-normal">{call.business_name || call.company_name || call.business || '-'}</div>
+                    </td>
+                    <td className="px-2 py-1 align-top break-words">
+                      <div className="text-xs text-theme-text-secondary">{call.created_at ? new Date(call.created_at).toLocaleString('es-ES') : '-'}</div>
+                    </td>
+                    {/* Owner and Callback time omitted for possibly_interested view */}
+                    <td className="px-2 py-1 align-top break-words">
+                      <div className="text-xs">
+                        <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium border ${getDispositionColor(call.disposition)}`}>
+                          {call.disposition || 'N/A'}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-2 py-1 align-top flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setModalCallId(call.call_id || null)
+                          setIsModalOpen(true)
+                        }}
+                        className="inline-flex items-center px-2 py-1 border border-theme-primary text-theme-primary bg-theme-primary/10 hover:bg-theme-primary/20 rounded-theme text-xs font-medium transition-colors"
+                      >
+                        Ver
+                      </button>
+
+                      <Link
+                        href={call.to_number ? `/clientes/${encodeURIComponent(call.to_number)}` : '#'}
+                        className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-theme transition-colors ${call.to_number ? 'border border-theme-border text-theme-text-primary hover:bg-theme-surface' : 'opacity-50 cursor-not-allowed'}`}
+                        aria-disabled={!call.to_number}
+                      >
+                        Historial
+                      </Link>
+                    </td>
+                  </tr>
+                ))
+              )
             ) : callbacks.length === 0 ? (
-              <tr><td colSpan={6} className="p-8 text-center text-theme-text-secondary">No hay callbacks.</td></tr>
+              <tr><td colSpan={colCount} className="p-8 text-center text-theme-text-secondary">No hay callbacks.</td></tr>
             ) : (
               callbacks.map(cb => (
                 <tr key={cb.id} className="hover:bg-theme-surface-hover transition-colors">
                   <td className="px-2 py-1 align-top break-words">
                     <div className="text-xs font-mono text-theme-text-muted break-words whitespace-normal">{cb.to_number || '-'}</div>
+                  </td>
+                  <td className="px-2 py-1 align-top break-words">
+                    <div className="text-xs text-theme-text-primary break-words whitespace-normal">{cb.business_name || cb.lead_business_name || cb.business || '-'}</div>
                   </td>
                   <td className="px-2 py-1 align-top break-words">
                     <div className="text-xs text-theme-text-secondary">{cb.call_started_at ? new Date(cb.call_started_at).toLocaleString('es-ES') : (cb.created_at ? new Date(cb.created_at).toLocaleString('es-ES') : '-')}</div>
@@ -233,7 +335,7 @@ export default function CallbacksList() {
       </div>
 
       <div className="flex flex-col gap-2 mt-4 p-4">
-        <div className="text-sm text-theme-text-primary">Página {page} / {totalPages}</div>
+  <div className="text-sm text-theme-text-primary">Página {page} / {(activeView === 'possibly_interested' ? possiblyTotalPages : totalPages)}</div>
         <div className="flex items-center justify-center gap-2">
           <button
             onClick={() => load(Math.max(page - 1, 1))}
@@ -243,8 +345,8 @@ export default function CallbacksList() {
             Anterior
           </button>
           <button
-            onClick={() => load(Math.min(page + 1, totalPages))}
-            disabled={page === totalPages}
+            onClick={() => load(Math.min(page + 1, (activeView === 'possibly_interested' ? possiblyTotalPages : totalPages)))}
+            disabled={page === (activeView === 'possibly_interested' ? possiblyTotalPages : totalPages)}
             className="px-3 py-1 border border-theme-border rounded-theme text-sm text-theme-text-primary disabled:opacity-50 disabled:cursor-not-allowed hover:bg-theme-surface"
           >
             Siguiente
@@ -254,8 +356,9 @@ export default function CallbacksList() {
       {isModalOpen && modalCallId && (
         <CallbacksModal
           isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
+          onClose={(shouldReload?: boolean) => { setIsModalOpen(false); if (shouldReload) load(1); }}
           callId={modalCallId}
+          source={activeView === 'possibly_interested' ? 'possibly_interested' : undefined}
         />
       )}
     </div>
