@@ -23,15 +23,15 @@ export default function Sidebar({ activeItem = 'calls' }: SidebarProps) {
       description: 'Gestión de llamadas'
     },
     {
-      id: 'leads',
-      name: 'Leads',
+      id: 'callbacks',
+      name: 'Callbacks',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
       ),
-      href: '/leads',
-      description: 'Prospectos y seguimiento'
+      href: '/callbacks',
+      description: 'Llamadas programadas'
     },
     {
       id: 'clientes',
@@ -66,15 +66,17 @@ export default function Sidebar({ activeItem = 'calls' }: SidebarProps) {
       {/* Header del Sidebar */}
       <div className="flex items-center justify-between p-6 border-b border-theme-border/30">
         <div className={`flex items-center space-x-3 ${isCollapsed ? 'justify-center' : ''}`}>
-          <div className="w-10 h-10 bg-theme-primary rounded-theme flex items-center justify-center shadow-lg">
-            <span className="text-white font-bold text-lg">SA</span>
-          </div>
-          {!isCollapsed && (
-            <div>
-              <h1 className="text-theme-text-primary font-bold text-xl">Smart ATM</h1>
-              <p className="text-theme-text-muted text-xs">Call Management</p>
+          <Link href="/" className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-theme-primary rounded-theme flex items-center justify-center shadow-lg">
+              <span className="text-white font-bold text-lg">SA</span>
             </div>
-          )}
+            {!isCollapsed && (
+              <div>
+                <h1 className="text-theme-text-primary font-bold text-xl">Smart ATM</h1>
+                <p className="text-theme-text-muted text-xs">Call Management</p>
+              </div>
+            )}
+          </Link>
         </div>
         
         <button

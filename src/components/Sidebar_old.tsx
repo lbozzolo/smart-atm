@@ -25,13 +25,7 @@ export default function Sidebar({ activeItem = 'dashboard' }: SidebarProps) {
       href: '/calls',
       description: 'Gestión de llamadas'
     },
-    {
-      id: 'leads',
-      name: 'Leads',
-      icon: '�',
-      href: '/leads',
-      description: 'Prospectos y seguimiento'
-    },
+    
     {
       id: 'analytics',
       name: 'Análisis',

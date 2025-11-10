@@ -438,7 +438,8 @@ export async function getCallbacksByCallId(callId: string): Promise<Callback[]> 
       .from('callbacks')
       .select('*')
       .eq('call_id', callId)
-      .order('callback_date', { ascending: false })
+      // Order by created_at (callback_date field does not exist in table schema)
+      .order('created_at', { ascending: false })
 
     if (error) {
       console.error('Error fetching callbacks:', error)
@@ -449,6 +450,111 @@ export async function getCallbacksByCallId(callId: string): Promise<Callback[]> 
   } catch (error) {
     console.error('Error in getCallbacksByCallId:', error)
     throw error
+  }
+}
+
+// Obtener callbacks paginados (útil para la UI de administración)
+export interface CallbacksFilterParams {
+  search?: string
+  disposition?: string
+  dateFrom?: string // ISO date string (inclusive)
+  dateTo?: string // ISO date string (inclusive)
+  owner?: string
+}
+
+export async function getAllCallbacks(page = 1, limit = 50, filters?: CallbacksFilterParams) {
+  try {
+    const offset = (page - 1) * limit
+
+    let query: any = supabase
+      .from('callbacks')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+
+    // Apply search across common text fields
+    if (filters?.search) {
+      const s = filters.search.replace(/%/g, '\\%')
+      query = query.or(`to_number.ilike.%${s}%,callback_owner_name.ilike.%${s}%,callback_time_text_raw.ilike.%${s}%`)
+    }
+
+    if (filters?.disposition) {
+      query = query.eq('disposition', filters.disposition)
+    }
+
+    if (filters?.owner) {
+      const o = filters.owner.replace(/%/g, '\\%')
+      query = query.ilike('callback_owner_name', `%${o}%`)
+    }
+
+    if (filters?.dateFrom) {
+      // expect ISO string (or yyyy-mm-dd); use created_at as reference
+      query = query.gte('created_at', filters.dateFrom)
+    }
+
+    if (filters?.dateTo) {
+      // include end of day if user passed a date without time
+      query = query.lte('created_at', filters.dateTo)
+    }
+
+    const { data, count, error } = await query.range(offset, offset + limit - 1)
+
+    if (error) {
+      console.error('Error fetching callbacks paginated:', error)
+      throw error
+    }
+
+    return {
+      data: data || [],
+      total: count || (data ? data.length : 0),
+      page,
+      limit,
+      totalPages: Math.ceil((count || (data ? data.length : 0)) / limit)
+    }
+  } catch (err) {
+    console.error('Error in getAllCallbacks:', err)
+    throw err
+  }
+}
+
+// Eliminar un callback por id
+export async function deleteCallbackById(id: string) {
+  try {
+    const { data, error } = await supabase
+      .from('callbacks')
+      .delete()
+      .eq('id', id)
+      .single()
+
+    if (error) {
+      console.error('Error deleting callback:', error)
+      throw error
+    }
+
+    return data
+  } catch (err) {
+    console.error('Error in deleteCallbackById:', err)
+    throw err
+  }
+}
+
+// Actualizar disposition (marcar completado u otros estados)
+export async function updateCallbackDisposition(id: string, disposition: string) {
+  try {
+    const { data, error } = await supabase
+      .from('callbacks')
+      .update({ disposition })
+      .eq('id', id)
+      .single()
+
+    if (error) {
+      console.error('Error updating callback disposition:', error)
+      throw error
+    }
+
+    return data
+  } catch (err) {
+    console.error('Error in updateCallbackDisposition:', err)
+    throw err
   }
 }
 

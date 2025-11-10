@@ -71,6 +71,7 @@ export default function MetricsSection() {
   const [calls, setCalls] = useState<CallWithPCAInfo[]>([])
   const [totalCallbacks, setTotalCallbacks] = useState(0)
   const [totalPcaMs, setTotalPcaMs] = useState(0)
+  const [totalCallsCount, setTotalCallsCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -80,17 +81,39 @@ export default function MetricsSection() {
         const callsData = await getCallsWithPCAInfo()
         setCalls(callsData)
 
-        // Obtener callbacks de la tabla callbacks
-        const { data: callbacksData, error } = await supabase
-          .from('callbacks')
-          .select('id')
+        // Obtener conteo exacto de llamadas (para evitar límites por página)
+        try {
+          const { count: callsCount, error: callsCountError } = await supabase
+            .from('calls')
+            .select('call_id', { head: true, count: 'exact' })
 
-        if (error) {
-          console.error('Error fetching callbacks:', error)
+          if (!callsCountError) {
+            setTotalCallsCount(callsCount || 0)
+            console.log('📞 Total de llamadas (conteo exacto):', callsCount)
+          } else {
+            console.warn('Warning fetching exact calls count:', callsCountError)
+          }
+        } catch (err) {
+          console.warn('Warning: could not fetch exact calls count', err)
+        }
+
+        // Obtener callbacks de la tabla callbacks
+        // Obtener conteo exacto de callbacks
+        try {
+          const { count: callbacksCount, error: callbacksCountError } = await supabase
+            .from('callbacks')
+            .select('id', { head: true, count: 'exact' })
+
+          if (!callbacksCountError) {
+            setTotalCallbacks(callbacksCount || 0)
+            console.log('📞 Total callbacks encontrados en tabla callbacks:', callbacksCount)
+          } else {
+            console.warn('Warning fetching exact callbacks count:', callbacksCountError)
+            setTotalCallbacks(0)
+          }
+        } catch (err) {
+          console.warn('Warning: could not fetch exact callbacks count', err)
           setTotalCallbacks(0)
-        } else {
-          setTotalCallbacks(callbacksData?.length || 0)
-          console.log('📞 Total callbacks encontrados en tabla callbacks:', callbacksData?.length || 0)
         }
 
         // Obtener todos los PCA y sumar duration_ms
@@ -136,7 +159,7 @@ export default function MetricsSection() {
   }
 
   // Calcular métricas
-  const totalCalls = calls.length
+  const totalCalls = totalCallsCount ?? calls.length
   // Calcular minutos totales consumidos usando todos los PCA
   const totalMinutes = Math.round(totalPcaMs / 1000 / 60)
   

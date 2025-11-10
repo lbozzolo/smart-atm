@@ -811,30 +811,69 @@ export default function ModernCallsTable() {
         </div>
         
         {/* Pagination */}
-        {totalPages > 1 && (
+        {totalPages > 0 && (
           <div className="px-6 py-4 border-t border-theme-border bg-theme-surface-hover">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-col md:flex-row gap-3 md:gap-0">
               <div className="text-sm text-theme-text-primary">
-                Mostrando {startIndex + 1} a {Math.min(startIndex + itemsPerPage, totalItems)} de {totalItems} registros
+                Mostrando {totalItems === 0 ? 0 : startIndex + 1} a {Math.min(startIndex + itemsPerPage, totalItems)} de {totalItems} registros
               </div>
-              
+
               <div className="flex items-center space-x-2">
                 <button
                   onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                   disabled={currentPage === 1}
                   className="px-3 py-1 border border-theme-border rounded-theme text-sm text-theme-text-primary disabled:opacity-50 disabled:cursor-not-allowed hover:bg-theme-surface"
+                  aria-label="Página anterior"
                 >
                   Anterior
                 </button>
-                
-                <span className="text-sm text-theme-text-secondary">
-                  Página {currentPage} de {totalPages}
-                </span>
-                
+
+                {/* Page numbers with window and ellipsis */}
+                <div className="hidden sm:flex items-center space-x-1">
+                  {(() => {
+                    const pages: (number | string)[] = []
+                    const maxButtons = 7
+                    if (totalPages <= maxButtons) {
+                      for (let i = 1; i <= totalPages; i++) pages.push(i)
+                    } else {
+                      const left = Math.max(2, currentPage - 2)
+                      const right = Math.min(totalPages - 1, currentPage + 2)
+                      pages.push(1)
+                      if (left > 2) pages.push('...')
+                      for (let i = left; i <= right; i++) pages.push(i)
+                      if (right < totalPages - 1) pages.push('...')
+                      pages.push(totalPages)
+                    }
+
+                    return pages.map((p, idx) => {
+                      if (p === '...') {
+                        return (
+                          <span key={`dots-${idx}`} className="px-2 text-sm text-theme-text-secondary">...</span>
+                        )
+                      }
+
+                      const pageNum = Number(p)
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setCurrentPage(pageNum)}
+                          className={`px-3 py-1 rounded-theme text-sm border ${pageNum === currentPage ? 'bg-theme-primary text-white border-theme-primary' : 'bg-theme-surface text-theme-text-primary border-theme-border hover:bg-theme-surface-hover'}`}
+                        >
+                          {pageNum}
+                        </button>
+                      )
+                    })
+                  })()}
+                </div>
+
+                {/* Small screens: compact page indicator */}
+                <div className="sm:hidden text-sm text-theme-text-secondary">{currentPage}/{totalPages}</div>
+
                 <button
                   onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                   disabled={currentPage === totalPages}
                   className="px-3 py-1 border border-theme-border rounded-theme text-sm text-theme-text-primary disabled:opacity-50 disabled:cursor-not-allowed hover:bg-theme-surface"
+                  aria-label="Página siguiente"
                 >
                   Siguiente
                 </button>
