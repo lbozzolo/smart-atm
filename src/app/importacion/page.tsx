@@ -23,7 +23,7 @@ export default function ImportacionPage() {
 
       // Detectar delimitador (coma/; / tab)
       const firstLine = text.split(/\r?\n/)[0] || ''
-      const counts = {
+      const counts: Record<string, number> = {
         ',': (firstLine.match(/,/g) || []).length,
         ';': (firstLine.match(/;/g) || []).length,
         '\t': (firstLine.match(/\t/g) || []).length
