@@ -685,7 +685,7 @@ export default function LeadsTable({ onCallSelect }: LeadsTableProps) {
                                             </time>
                                           </div>
                                           <div className="text-sm" style={{ color: 'var(--color-textSecondary)' }}>
-                                            {interaction.disposition || '—'}{interaction.notes ? ` — ${interaction.notes}` : ''}
+                                            {interaction.disposition || '—'}
                                           </div>
                                         </div>
                                       </div>
