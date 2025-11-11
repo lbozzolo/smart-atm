@@ -116,17 +116,56 @@ export default function MetricsSection() {
           setTotalCallbacks(0)
         }
 
-        // Obtener todos los PCA y sumar duration_ms
-        const { data: pcaData, error: pcaError } = await supabase
-          .from('pca')
-          .select('duration_ms')
+        // Obtener suma de duration_ms desde el servidor usando RPC para evitar problemas de paginación
+        try {
+          const { data: rpcData, error: rpcError } = await supabase.rpc('sum_pca_duration_ms')
+          if (rpcError) {
+            console.warn('RPC sum_pca_duration_ms not available or error:', rpcError)
+            // Fallback: traer hasta 10000 filas de pca.duration_ms y sumar en cliente
+            try {
+              const { data: pcaData, error: pcaError } = await supabase
+                .from('pca')
+                .select('duration_ms')
+                .limit(10000)
 
-        if (pcaError) {
-          console.error('Error fetching PCA:', pcaError)
-          setTotalPcaMs(0)
-        } else {
-          const totalMs = (pcaData || []).reduce((sum, pca) => sum + (pca.duration_ms || 0), 0)
-          setTotalPcaMs(totalMs)
+              if (pcaError) {
+                console.error('Error fetching PCA (fallback):', pcaError)
+                setTotalPcaMs(0)
+              } else {
+                const totalMs = (pcaData || []).reduce((sum, pca) => sum + (pca.duration_ms || 0), 0)
+                setTotalPcaMs(totalMs)
+              }
+            } catch (err2) {
+              console.error('Fallback fetch error:', err2)
+              setTotalPcaMs(0)
+            }
+          } else {
+            // supabase-js puede devolver el valor como número simple o como array; normalizamos
+            let totalMs = 0
+            if (Array.isArray(rpcData)) {
+              // try first element
+              totalMs = Number(rpcData[0]) || 0
+            } else {
+              totalMs = Number(rpcData) || 0
+            }
+            setTotalPcaMs(totalMs)
+          }
+        } catch (err) {
+          console.error('Exception calling RPC sum_pca_duration_ms:', err)
+          // último recurso: intentar traer algunas filas
+          try {
+            const { data: pcaData2, error: pcaErr2 } = await supabase.from('pca').select('duration_ms').limit(10000)
+            if (pcaErr2) {
+              console.error('Error fetching PCA final fallback:', pcaErr2)
+              setTotalPcaMs(0)
+            } else {
+              const totalMs = (pcaData2 || []).reduce((sum, pca) => sum + (pca.duration_ms || 0), 0)
+              setTotalPcaMs(totalMs)
+            }
+          } catch (err2) {
+            console.error('Final fallback failed:', err2)
+            setTotalPcaMs(0)
+          }
         }
 
       } catch (error) {
