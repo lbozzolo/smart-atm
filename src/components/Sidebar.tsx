@@ -106,34 +106,59 @@ export default function Sidebar({ activeItem = 'calls' }: SidebarProps) {
       {/* Navigation Menu */}
       <nav className="mt-8 px-4">
         <div className="space-y-2">
-          {menuItems.map((item) => (
-            <Link
-              key={item.id}
-              href={item.href}
-              className={`
+          {menuItems.map((item) => {
+            const className = `
                 flex items-center space-x-3 p-3 rounded-theme transition-all duration-200 group
                 ${activeItem === item.id 
                   ? 'bg-theme-primary text-white shadow-lg' 
                   : 'text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-surface-hover'
                 }
-              `}
-            >
-              <div className={`${activeItem === item.id ? 'scale-110' : 'group-hover:scale-110'} transition-transform`}>
-                {item.icon}
-              </div>
-              
-              {!isCollapsed && (
-                <div className="flex-1">
-                  <div className="font-medium">{item.name}</div>
-                  <div className="text-xs opacity-70">{item.description}</div>
+              `
+
+            // For the Exportación item we force a full page load (plain <a>) to avoid
+            // client-side navigation issues after deployments (cached client assets
+            // can request stale _next/data/* routes and result in 404). This is a
+            // temporary mitigation until clients refresh their cache.
+            if (item.id === 'exportacion') {
+              return (
+                <a key={item.id} href={item.href} className={className}>
+                  <div className={`${activeItem === item.id ? 'scale-110' : 'group-hover:scale-110'} transition-transform`}>
+                    {item.icon}
+                  </div>
+                  {!isCollapsed && (
+                    <div className="flex-1">
+                      <div className="font-medium">{item.name}</div>
+                      <div className="text-xs opacity-70">{item.description}</div>
+                    </div>
+                  )}
+                  {activeItem === item.id && !isCollapsed && (
+                    <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                  )}
+                </a>
+              )
+            }
+
+            return (
+              <Link
+                key={item.id}
+                href={item.href}
+                className={className}
+              >
+                <div className={`${activeItem === item.id ? 'scale-110' : 'group-hover:scale-110'} transition-transform`}>
+                  {item.icon}
                 </div>
-              )}
-              
-              {activeItem === item.id && !isCollapsed && (
-                <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-              )}
-            </Link>
-          ))}
+                {!isCollapsed && (
+                  <div className="flex-1">
+                    <div className="font-medium">{item.name}</div>
+                    <div className="text-xs opacity-70">{item.description}</div>
+                  </div>
+                )}
+                {activeItem === item.id && !isCollapsed && (
+                  <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                )}
+              </Link>
+            )
+          })}
         </div>
       </nav>
 
