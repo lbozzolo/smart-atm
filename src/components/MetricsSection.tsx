@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { getCallsWithPCAInfo, type CallWithPCAInfo, supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 
 interface MetricCardProps {
   title: string
@@ -68,19 +68,16 @@ function MetricCard({ title, value, change, icon, color, trend = 'neutral' }: Me
 }
 
 export default function MetricsSection() {
-  const [calls, setCalls] = useState<CallWithPCAInfo[]>([])
   const [totalCallbacks, setTotalCallbacks] = useState(0)
   const [totalPcaMs, setTotalPcaMs] = useState(0)
   const [totalCallsCount, setTotalCallsCount] = useState<number | null>(null)
+  const [successfulCallsCount, setSuccessfulCallsCount] = useState<number>(0)
+  const [avgAmount, setAvgAmount] = useState<number>(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function fetchMetrics() {
       try {
-        // Obtener llamadas
-        const callsData = await getCallsWithPCAInfo()
-        setCalls(callsData)
-
         // Obtener conteo exacto de llamadas (para evitar límites por página)
         try {
           const { count: callsCount, error: callsCountError } = await supabase
@@ -97,8 +94,7 @@ export default function MetricsSection() {
           console.warn('Warning: could not fetch exact calls count', err)
         }
 
-        // Obtener callbacks de la tabla callbacks
-        // Obtener conteo exacto de callbacks
+        // Obtener callbacks de la tabla callbacks (conteo exacto)
         try {
           const { count: callbacksCount, error: callbacksCountError } = await supabase
             .from('callbacks')
@@ -167,6 +163,39 @@ export default function MetricsSection() {
             setTotalPcaMs(0)
           }
         }
+        // Obtener conteo de llamadas con agreed_amount > 0 (éxitos)
+        try {
+          const { count: successCount, error: successCountErr } = await supabase
+            .from('calls')
+            .select('agreed_amount', { head: true, count: 'exact' })
+            .gt('agreed_amount', 0)
+
+          if (!successCountErr) {
+            setSuccessfulCallsCount(successCount || 0)
+          }
+        } catch (err) {
+          console.warn('Warning fetching successful calls count:', err)
+          setSuccessfulCallsCount(0)
+        }
+
+        // Obtener muestra para calcular promedio de agreed_amount (limitar para no traer todo)
+        try {
+          const { data: agreedRows, error: agreedErr } = await supabase
+            .from('calls')
+            .select('agreed_amount')
+            .gt('agreed_amount', 0)
+            .limit(10000)
+
+          if (!agreedErr && Array.isArray(agreedRows) && agreedRows.length > 0) {
+            const total = agreedRows.reduce((sum: number, r: any) => sum + (r.agreed_amount || 0), 0)
+            setAvgAmount(total / agreedRows.length)
+          } else {
+            setAvgAmount(0)
+          }
+        } catch (err) {
+          console.warn('Warning fetching agreed_amount rows:', err)
+          setAvgAmount(0)
+        }
 
       } catch (error) {
         console.error('Error loading metrics:', error)
@@ -198,46 +227,11 @@ export default function MetricsSection() {
   }
 
   // Calcular métricas
-  const totalCalls = totalCallsCount ?? calls.length
+  const totalCalls = totalCallsCount ?? 0
   // Calcular minutos totales consumidos usando todos los PCA
   const totalMinutes = Math.round(totalPcaMs / 1000 / 60)
-  
-  // Debug: ver qué dispositions realmente existen
-  const uniqueDispositions = Array.from(new Set(calls.map(call => call.disposition).filter(Boolean)))
-  const dispositionsWithNulls = calls.map(call => call.disposition)
-  
-  console.log('🔍 Dispositions únicos encontrados:', uniqueDispositions)
-  console.log('🔍 Todos los dispositions (incluyendo nulls):', dispositionsWithNulls)
-  console.log('🔍 Cuántos dispositions son null/undefined:', dispositionsWithNulls.filter(d => !d).length)
-  console.log('📊 Total de llamadas:', totalCalls)
-  console.log('📞 Total de callbacks (tabla callbacks):', totalCallbacks)
-  
-  // TEMPORAL: Usar agreed_amount como indicador de éxito ya que disposition está vacío
-  const successfulCalls = calls.filter(call => 
-    call.agreed_amount && call.agreed_amount > 0
-  ).length
-  
-  console.log('💰 Usando agreed_amount como indicador de éxito')
-  console.log('💰 Llamadas con monto acordado (exitosas):', successfulCalls)
-  
-  console.log('✅ Llamadas con venta encontradas:', successfulCalls)
-  
-  // Mostrar todas las llamadas con sus dispositions para debug
-  console.log('📋 Muestra de la primera llamada:', calls[0])
-  console.log('📋 Campos de disposition de las primeras 5 llamadas:', calls.slice(0, 5).map(call => ({
-    call_id: call.call_id,
-    disposition: call.disposition,
-    disposition_type: typeof call.disposition,
-    disposition_value: JSON.stringify(call.disposition),
-    all_keys: Object.keys(call)
-  })))
-  
-  const avgAmount = calls
-    .filter(call => call.agreed_amount && call.agreed_amount > 0)
-    .reduce((sum, call) => sum + (call.agreed_amount || 0), 0) / 
-    calls.filter(call => call.agreed_amount && call.agreed_amount > 0).length || 0
 
-  const successRate = totalCalls > 0 ? ((successfulCalls / totalCalls) * 100).toFixed(1) : 0
+  const successRate = totalCalls > 0 ? ((successfulCallsCount / totalCalls) * 100).toFixed(1) : 0
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -264,7 +258,7 @@ export default function MetricsSection() {
       <MetricCard
         title="Llamadas con Venta"
         value={`${successRate}%`}
-        change={`${successfulCalls} con monto acordado`}
+        change={`${successfulCallsCount} con monto acordado`}
         icon={
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
@@ -290,9 +284,7 @@ export default function MetricsSection() {
       <MetricCard
         title="Monto Promedio"
         value={avgAmount > 0 ? `$${Math.round(avgAmount).toLocaleString()}` : 'N/A'}
-        change={calls.filter(call => call.agreed_amount && call.agreed_amount > 0).length > 0 
-          ? `${calls.filter(call => call.agreed_amount && call.agreed_amount > 0).length} con montos` 
-          : 'Sin montos registrados'}
+        change={successfulCallsCount > 0 ? `${successfulCallsCount} con montos` : 'Sin montos registrados'}
         icon={
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
