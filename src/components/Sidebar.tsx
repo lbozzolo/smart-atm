@@ -65,7 +65,7 @@ export default function Sidebar({ activeItem = 'calls' }: SidebarProps) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12h10M7 8h10M7 16h10" />
         </svg>
       ),
-      href: '/exportacion',
+        href: '/exportacion-de-leads',
       description: 'Exportar datos (CSV)'
     }
   ]

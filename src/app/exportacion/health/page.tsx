@@ -1,8 +1,5 @@
-export default function HealthPage() {
-  return (
-    <div style={{padding:40, fontFamily: 'Inter, system-ui, -apple-system'}}>
-      <h1>Exportación — Health</h1>
-      <p>Ruta de diagnóstico funcionando en /exportacion/health</p>
-    </div>
-  )
+import { redirect } from 'next/navigation'
+
+export default function HealthRedirect() {
+  redirect('/exportacion-de-leads/health')
 }
