@@ -55,6 +55,19 @@ export default function Sidebar({ activeItem = 'calls' }: SidebarProps) {
       href: '/importacion',
       description: 'Importar datos a la base'
     }
+    ,
+    {
+      id: 'exportacion',
+      name: 'Exportación',
+      icon: (
+        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 16V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12h10M7 8h10M7 16h10" />
+        </svg>
+      ),
+      href: '/exportacion',
+      description: 'Exportar datos (CSV)'
+    }
   ]
 
   return (
