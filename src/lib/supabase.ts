@@ -411,7 +411,7 @@ export async function getCallsWithPagination(params: PaginationParams): Promise<
         hasPCA: callsWithPCA.has(call.call_id),
         hasCallbacks: callbackOwnerNameMap.has(call.call_id),
         duration_ms: pcaDurationMap.get(call.call_id) || undefined,
-        call_successful: pcaCallSuccessMap.get(call.call_id) ?? call.call_successful ?? undefined,
+        call_successful: pcaCallSuccessMap.get(call.call_id) ?? undefined,
         disconnection_reason: pcaDisconnectionMap.get(call.call_id) || undefined
       }
     })
