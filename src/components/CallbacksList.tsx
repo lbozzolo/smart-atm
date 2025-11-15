@@ -39,6 +39,20 @@ export default function CallbacksList() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [modalCallId, setModalCallId] = useState<string | null>(null)
   const [activeView, setActiveView] = useState<'callbacks' | 'possibly_interested'>('callbacks')
+  
+  // Para navegación en el modal: extraer todos los call_ids de la página actual
+  const getCurrentCallIds = (): string[] => {
+    if (activeView === 'possibly_interested') {
+      return possiblyCalls.map(c => c.call_id || c.id).filter(Boolean)
+    } else {
+      return callbacks.map(c => c.call_id || c.id).filter(Boolean)
+    }
+  }
+
+  const handleNavigateToCall = (callId: string) => {
+    setModalCallId(callId)
+  }
+
   async function load(pageToLoad = 1, useFilters = true) {
     setLoading(true)
     try {
@@ -358,6 +372,8 @@ export default function CallbacksList() {
           onClose={(shouldReload?: boolean) => { setIsModalOpen(false); if (shouldReload) load(1); }}
           callId={modalCallId}
           source={activeView === 'possibly_interested' ? 'possibly_interested' : undefined}
+          allCallIds={getCurrentCallIds()}
+          onNavigate={handleNavigateToCall}
         />
       )}
     </div>

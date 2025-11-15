@@ -782,9 +782,19 @@ export async function updateCallbackById(id: string, fields: Partial<Callback>) 
 // Crear un nuevo callback
 export async function createCallback(fields: Partial<Callback>) {
   try {
+    // El constraint de la tabla requiere que call_id = id
+    // Usamos el call_id como id también
+    const callbackId = fields.call_id || crypto.randomUUID()
+    
+    const callbackData = {
+      id: callbackId,
+      call_id: callbackId, // Debe ser igual a id por el constraint
+      ...fields
+    }
+    
     const { data, error } = await supabase
       .from('callbacks')
-      .insert([fields])
+      .insert([callbackData])
       .select()
 
     if (error) {
@@ -892,26 +902,30 @@ export async function getCallBasicWithLead(callId: string) {
     const callRow = await getCallBasic(callId)
     if (!callRow) return null
 
-    // Try to fetch lead by to_number to pull lead.owner_name without doing heavy fuzzy searches
+    // Try to fetch lead by to_number to pull lead.owner_name and timezone
     try {
       const toNumber = String((callRow as any).to_number || '')
       if (toNumber) {
         const { data: leadRow, error: leadErr } = await supabase
           .from('leads')
-          .select('owner_name')
+          .select('owner_name, timezone')
           .eq('phone_number', toNumber)
           .limit(1)
 
         if (!leadErr && leadRow && Array.isArray(leadRow) && leadRow.length > 0) {
           ;(callRow as any).lead_owner_name = leadRow[0].owner_name || null
+          ;(callRow as any).lead_timezone = leadRow[0].timezone || null
         } else {
           ;(callRow as any).lead_owner_name = null
+          ;(callRow as any).lead_timezone = null
         }
       } else {
         ;(callRow as any).lead_owner_name = null
+        ;(callRow as any).lead_timezone = null
       }
     } catch (e) {
       ;(callRow as any).lead_owner_name = null
+      ;(callRow as any).lead_timezone = null
     }
 
     return callRow

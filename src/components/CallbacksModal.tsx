@@ -21,9 +21,12 @@ interface CallbacksModalProps {
   onClose: (shouldReload?: boolean) => void
   callId: string
   source?: 'possibly_interested'
+  // Para navegación entre múltiples casos
+  allCallIds?: string[]
+  onNavigate?: (callId: string) => void
 }
 
-export default function CallbacksModal({ isOpen, onClose, callId, source }: CallbacksModalProps) {
+export default function CallbacksModal({ isOpen, onClose, callId, source, allCallIds, onNavigate }: CallbacksModalProps) {
   const [callbacks, setCallbacks] = useState<Callback[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -33,6 +36,13 @@ export default function CallbacksModal({ isOpen, onClose, callId, source }: Call
   const [saveError, setSaveError] = useState<string | null>(null)
   // Indica si durante la sesión del modal se hicieron cambios que requieren recargar la lista
   const [dataChanged, setDataChanged] = useState(false)
+
+  // Cache para prefetching - mantiene datos precargados en memoria
+  const [dataCache, setDataCache] = useState<Map<string, {
+    pcaData: PCA[]
+    callData: any
+    callbacks: Callback[]
+  }>>(new Map())
 
   // pestañas
   const [activeTab, setActiveTab] = useState<'overview' | 'transcript'>('overview')
@@ -52,41 +62,140 @@ export default function CallbacksModal({ isOpen, onClose, callId, source }: Call
   // valor temporal usado en el flujo possibly_interested para marcar como not_interested u otras
   const [noPickerValue, setNoPickerValue] = useState('not_interested')
 
-  // Opciones por defecto para el picker 'No' en el flujo possibly_interested
-  const NO_PICKER_DEFAULTS = ['not_interested', 'invalid_number', 'no_answer', 'owner_not_present']
+  // Opciones para el picker 'No' en el flujo possibly_interested - filtrando 'possibly_interested' ya que no tiene sentido en este contexto
+  const NO_PICKER_DEFAULTS = DISPOSITIONS.filter(d => d !== 'possibly_interested')
 
+  // Atajos de teclado para navegación
   useEffect(() => {
-    if (isOpen && callId) fetchAll()
-  }, [isOpen, callId])
+    if (!isOpen || !allCallIds || !onNavigate) return
 
-  const fetchAll = async () => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignorar si está escribiendo en un input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
+        return
+      }
+
+      const currentIndex = allCallIds.indexOf(callId)
+      
+      if (e.key === 'ArrowLeft' && currentIndex > 0) {
+        e.preventDefault()
+        onNavigate(allCallIds[currentIndex - 1])
+      } else if (e.key === 'ArrowRight' && currentIndex < allCallIds.length - 1) {
+        e.preventDefault()
+        onNavigate(allCallIds[currentIndex + 1])
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, callId, allCallIds, onNavigate])
+
+  const fetchAll = async (targetCallId: string, updateState: boolean = true) => {
     try {
-      setLoading(true)
-      setError(null)
+      // Primero verificar si ya está en cache
+      const cached = dataCache.get(targetCallId)
+      if (cached && updateState) {
+        setPcaData(cached.pcaData)
+        setCallData(cached.callData)
+        setCallbacks(cached.callbacks)
+        setLoading(false)
+        return
+      }
+
+      if (updateState) {
+        setLoading(true)
+        setError(null)
+      }
 
       // si venimos desde possibly_interested, usamos consultas ligeras
       if (source === 'possibly_interested') {
-        const latestPca = await getLatestPcaTranscriptByCallId(callId)
-        const callBasic = await getCallBasicWithLead(callId)
-        setPcaData(latestPca ? [latestPca] as any : [])
-        setCallData(callBasic ?? null)
-        // también comprobar si existen callbacks
-        const cbs = await getCallbacksByCallId(callId)
-        setCallbacks(cbs ?? [])
+        const latestPca = await getLatestPcaTranscriptByCallId(targetCallId)
+        const callBasic = await getCallBasicWithLead(targetCallId)
+        const cbs = await getCallbacksByCallId(targetCallId)
+        
+        const data = {
+          pcaData: latestPca ? [latestPca] as any : [],
+          callData: callBasic ?? null,
+          callbacks: cbs ?? []
+        }
+        
+        // Guardar en cache
+        setDataCache(prev => new Map(prev).set(targetCallId, data))
+        
+        // Actualizar el estado si se solicitó
+        if (updateState) {
+          setPcaData(data.pcaData)
+          setCallData(data.callData)
+          setCallbacks(data.callbacks)
+        }
       } else {
         // vista normal: traer detalles completos
-        const { call, pca, callback } = await getCallDetailsWithPCA(callId)
-        setCallData(call ?? null)
-        setPcaData(pca ?? [])
-        setCallbacks(callback ? (Array.isArray(callback) ? callback : [callback]) : [])
+        const { call, pca, callback } = await getCallDetailsWithPCA(targetCallId)
+        
+        const data = {
+          pcaData: pca ?? [],
+          callData: call ?? null,
+          callbacks: callback ? (Array.isArray(callback) ? callback : [callback]) : []
+        }
+        
+        // Guardar en cache
+        setDataCache(prev => new Map(prev).set(targetCallId, data))
+        
+        // Actualizar el estado si se solicitó
+        if (updateState) {
+          setPcaData(data.pcaData)
+          setCallData(data.callData)
+          setCallbacks(data.callbacks)
+        }
       }
     } catch (err) {
       console.error('Error fetching callbacks modal data:', err)
-      setError('Error cargando datos')
+      if (updateState) {
+        setError('Error cargando datos')
+      }
     } finally {
-      setLoading(false)
+      if (updateState) {
+        setLoading(false)
+      }
     }
   }
+
+  // Función para precargar el siguiente
+  const prefetchNext = () => {
+    if (!allCallIds) return
+    
+    const currentIndex = allCallIds.indexOf(callId)
+    if (currentIndex >= 0 && currentIndex < allCallIds.length - 1) {
+      const nextCallId = allCallIds[currentIndex + 1]
+      // Solo precargar si no está ya en cache
+      if (!dataCache.has(nextCallId)) {
+        fetchAll(nextCallId, false) // false = no actualizar estado, solo cachear
+      }
+    }
+  }
+
+  // Efecto principal: cargar actual + precargar siguiente
+  useEffect(() => {
+    if (isOpen && callId) {
+      fetchAll(callId, true) // true = actualizar estado
+      // Reset del estado de elección cuando cambia el callId
+      setPiChoice(null)
+      setPiError(null)
+      setFormOwnerName('')
+      setFormOwnerPhone('')
+      setFormTimeText('')
+      
+      // Precargar el siguiente después de un pequeño delay
+      setTimeout(() => prefetchNext(), 100)
+    }
+  }, [isOpen, callId])
+
+  // Limpiar cache al cerrar el modal para no consumir memoria
+  useEffect(() => {
+    if (!isOpen) {
+      setDataCache(new Map())
+    }
+  }, [isOpen])
 
   // Copia ligera de formatTranscript usada en AnalysisModal
   const formatTranscript = (transcript: string) => {
@@ -146,25 +255,30 @@ export default function CallbacksModal({ isOpen, onClose, callId, source }: Call
     try {
       setPiSaving(true)
       setPiError(null)
-      let callbackCallId = callId
-      try {
-        const latest = await getLatestPcaByCallId(callId)
-        if (latest && latest.call_id) callbackCallId = latest.call_id
-      } catch (e) {
-        console.warn('No se pudo obtener PCA para call_id:', e)
-      }
+      
+      // Para possibly_interested, el callId que recibimos es el call_id de la tabla calls
+      // Usamos directamente ese callId
       await createCallback({
-        call_id: callbackCallId,
+        call_id: callId, // Usar directamente el callId del prop, no del PCA
         callback_owner_name: formOwnerName || undefined,
         callback_owner_phone: formOwnerPhone || undefined,
         callback_time_text_raw: formTimeText || undefined,
         to_number: callData?.to_number || undefined,
+        caller_tz: (callData as any)?.lead_timezone || undefined, // Usar el timezone del lead
         disposition: 'callback'
       })
-      await fetchAll()
+      await fetchAll(callId, true)
       setDataChanged(true)
       // cerrar flujo PI
       setPiChoice(null)
+      
+      // Auto-avance: ir al siguiente si existe
+      if (allCallIds && onNavigate) {
+        const currentIndex = allCallIds.indexOf(callId)
+        if (currentIndex < allCallIds.length - 1) {
+          setTimeout(() => onNavigate(allCallIds[currentIndex + 1]), 300)
+        }
+      }
     } catch (err) {
       console.error('Error creando callback (PI):', err)
       setPiError('Error guardando los datos')
@@ -185,6 +299,14 @@ export default function CallbacksModal({ isOpen, onClose, callId, source }: Call
         await fetchAll()
         setDataChanged(true)
         setPiChoice(null)
+        
+        // Auto-avance: ir al siguiente si existe
+        if (allCallIds && onNavigate) {
+          const currentIndex = allCallIds.indexOf(callId)
+          if (currentIndex < allCallIds.length - 1) {
+            setTimeout(() => onNavigate(allCallIds[currentIndex + 1]), 300)
+          }
+        }
       } else {
         setPiError('No se encontró registro PCA para actualizar')
       }
@@ -228,10 +350,34 @@ export default function CallbacksModal({ isOpen, onClose, callId, source }: Call
       )
     }
 
-    // modo possibly_interested: transcript-first + pregunta Sí/No
+    // modo possibly_interested: pregunta arriba + transcript
     if (source === 'possibly_interested') {
       return (
         <div className="space-y-4">
+          {/* Pregunta ¿Es callback? - Ahora arriba para estar siempre visible */}
+          {piChoice === null && (
+            <div className="bg-white rounded-lg border-2 border-theme-primary/20 p-4 shadow-sm sticky top-0 z-10">
+              <div className="flex items-center justify-between">
+                <div className="text-base font-semibold text-theme-text-primary">¿Es callback?</div>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setPiChoice(true)} 
+                    className="px-4 py-2 bg-theme-primary text-white rounded-lg hover:bg-theme-primary/90 font-medium transition-colors"
+                  >
+                    Sí
+                  </button>
+                  <button 
+                    onClick={() => setPiChoice(false)} 
+                    className="px-4 py-2 border-2 border-theme-border rounded-lg hover:bg-theme-surface-hover font-medium transition-colors"
+                  >
+                    No
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Transcripción */}
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             {pcaData && pcaData.length > 0 && pcaData[0].transcript ? (
               <>
@@ -243,7 +389,7 @@ export default function CallbacksModal({ isOpen, onClose, callId, source }: Call
                     )}
                   </div>
                 </div>
-                <div className="bg-slate-50 rounded p-3 border border-slate-200">
+                <div className="bg-slate-50 rounded p-3 border border-slate-200 max-h-[400px] overflow-y-auto">
                   <div className="leading-relaxed text-sm">{formatTranscript(pcaData[0].transcript)}</div>
                 </div>
               </>
@@ -259,17 +405,6 @@ export default function CallbacksModal({ isOpen, onClose, callId, source }: Call
               </div>
             )}
           </div>
-
-          {/* Pregunta ¿Es callback? */}
-          {piChoice === null && (
-            <div className="flex items-center gap-3">
-              <div className="text-sm">¿Es callback?</div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setPiChoice(true)} className="px-3 py-1 bg-theme-primary text-white rounded">Sí</button>
-                <button onClick={() => setPiChoice(false)} className="px-3 py-1 border rounded">No</button>
-              </div>
-            </div>
-          )}
 
           {/* Si eligió Sí, mostrar formulario para crear callback */}
           {piChoice === true && (
@@ -424,16 +559,66 @@ export default function CallbacksModal({ isOpen, onClose, callId, source }: Call
 
   if (!isOpen) return null
 
+  // Calcular posición actual para navegación
+  const currentIndex = allCallIds ? allCallIds.indexOf(callId) : -1
+  const hasPrevious = currentIndex > 0
+  const hasNext = currentIndex >= 0 && currentIndex < (allCallIds?.length || 0) - 1
+  const totalCount = allCallIds?.length || 0
+
+  const handlePrevious = () => {
+    if (hasPrevious && allCallIds && onNavigate) {
+      onNavigate(allCallIds[currentIndex - 1])
+    }
+  }
+
+  const handleNext = () => {
+    if (hasNext && allCallIds && onNavigate) {
+      onNavigate(allCallIds[currentIndex + 1])
+    }
+  }
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
       <div className="bg-theme-surface backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden border border-theme-border animate-in slide-in-from-bottom duration-300">
         <div className="flex justify-between items-center p-8 border-b border-theme-border bg-theme-surface-hover">
-          <div>
+          <div className="flex-1">
             <div className="flex items-center space-x-3 mb-1">
               <h2 className="text-2xl font-bold text-theme-text-primary">Callbacks</h2>
+              {totalCount > 0 && (
+                <span className="px-3 py-1 bg-theme-primary/10 text-theme-primary rounded-full text-sm font-medium">
+                  {currentIndex + 1} de {totalCount}
+                </span>
+              )}
             </div>
             <p className="text-theme-text-secondary font-mono text-sm">Llamada ID: {callId}</p>
           </div>
+
+          {/* Botones de navegación */}
+          {allCallIds && allCallIds.length > 1 && (
+            <div className="flex items-center gap-2 mx-4">
+              <button
+                onClick={handlePrevious}
+                disabled={!hasPrevious}
+                className="w-10 h-10 flex items-center justify-center text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-primary/10 rounded-full transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                title="Anterior (←)"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <button
+                onClick={handleNext}
+                disabled={!hasNext}
+                className="w-10 h-10 flex items-center justify-center text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-primary/10 rounded-full transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                title="Siguiente (→)"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          )}
+
           <button onClick={() => onClose(dataChanged)} className="w-10 h-10 flex items-center justify-center text-theme-text-secondary hover:text-theme-text-primary hover:bg-theme-primary/10 rounded-full transition-all duration-200">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -458,7 +643,17 @@ export default function CallbacksModal({ isOpen, onClose, callId, source }: Call
 
         <div className="p-8 overflow-y-auto max-h-[calc(90vh-140px)]">{renderContent()}</div>
 
-        <div className="flex justify-end p-8 border-t border-slate-200/50 bg-gradient-to-r from-slate-50/50 to-white/50">
+        <div className="flex justify-between items-center p-8 border-t border-slate-200/50 bg-gradient-to-r from-slate-50/50 to-white/50">
+          {allCallIds && allCallIds.length > 1 ? (
+            <div className="text-xs text-theme-text-muted flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>Usa las flechas ← → para navegar entre casos</span>
+            </div>
+          ) : (
+            <div />
+          )}
           <button onClick={() => onClose(dataChanged)} className="px-8 py-3 bg-gradient-to-r from-slate-600 to-slate-700 text-white font-medium rounded-xl hover:from-slate-700 hover:to-slate-800 transition-all duration-200 shadow-lg hover:shadow-xl">Cerrar</button>
         </div>
       </div>
