@@ -296,7 +296,7 @@ export default function CallbacksModal({ isOpen, onClose, callId, source, allCal
       const latest = await getLatestPcaByCallId(callId)
       if (latest && latest.id) {
         await updatePcaById(latest.id, { disposition })
-        await fetchAll()
+        await fetchAll(callId, true)
         setDataChanged(true)
         setPiChoice(null)
         
