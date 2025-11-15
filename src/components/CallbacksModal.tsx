@@ -330,7 +330,7 @@ export default function CallbacksModal({ isOpen, onClose, callId, source, allCal
         callback_time_text_raw: formTimeText || undefined,
         disposition: 'callback'
       })
-      await fetchAll()
+      await fetchAll(callId, true)
       setDataChanged(true)
       setEditingId(null)
       setIsCallbackChoice(null)
