@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { getCallsWithPagination, type CallWithPCAInfo, type PaginationParams } from '@/lib/supabase'
 import AnalysisModal from './AnalysisModal'
+import DISPOSITIONS from '@/config/dispositions'
 
 // Función para formatear fecha en formato d-m-Y H:i
 const formatDate = (dateString: string | undefined) => {
@@ -513,9 +514,9 @@ export default function ModernCallsTable() {
                   className="px-3 py-2 border border-theme-border bg-theme-surface rounded-theme text-theme-text-primary focus:outline-none focus:ring-2 focus:ring-theme-primary/20 text-sm"
                 >
                   <option value="all">Todas las disposiciones</option>
-                  <option value="new_lead">New Lead</option>
-                  <option value="possibly_interested">Possibly Interested</option>
-                  <option value="owner_not_present">Owner Not Present</option>
+                  {DISPOSITIONS.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
                 </select>
                 
                 <div className="relative">

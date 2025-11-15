@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getAllCallbacks, deleteCallbackById, updateCallbackDisposition, getPossiblyInterestedCallsWithoutCallbacks } from '@/lib/supabase'
 import CallbacksModal from './CallbacksModal'
+import DISPOSITIONS from '@/config/dispositions'
 
 interface CallbackRow {
   id: string
@@ -194,11 +195,9 @@ export default function CallbacksList() {
           <div className="flex items-center space-x-2">
             <select value={filterDisposition} onChange={(e) => setFilterDisposition(e.target.value)} className="px-3 py-2 rounded border border-theme-border bg-theme-surface text-sm text-theme-text-primary">
               <option value="">Todas disposiciones</option>
-              <option value="invalid_number">invalid_number</option>
-              <option value="no_answer">no_answer</option>
-              <option value="owner_not_present">owner_not_present</option>
-              <option value="not_interested">not_interested</option>
-              <option value="possibly_interested">possibly_interested</option>
+              {DISPOSITIONS.map(d => (
+                <option key={d} value={d}>{d}</option>
+              ))}
             </select>
 
             <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="px-3 py-2 rounded border border-theme-border bg-theme-surface text-sm text-theme-text-primary" />

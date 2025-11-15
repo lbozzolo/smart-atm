@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import { getCallsWithPagination, supabase, type CallWithPCAInfo } from '@/lib/supabase'
+import DISPOSITIONS from '@/config/dispositions'
 
 function formatDateShort(d?: string) {
   if (!d) return '-'
   try {
-    return new Date(d).toLocaleString('es-ES')
+    return new Date(d).toLocaleDateString('es-ES')
   } catch {
     return d
   }
@@ -44,13 +45,7 @@ export default function ExportSection() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   // dispositions to omit from the query (user can select multiple)
-  const DISPOSITIONS = [
-    'invalid_number',
-    'no_answer',
-    'owner_not_present',
-    'not_interested',
-    'possibly_interested'
-  ]
+  // Use the central dispositions list from dispositions.ts as single source of truth
   const [omitDispositions, setOmitDispositions] = useState<string[]>([])
   const [minCalls, setMinCalls] = useState<number | ''>('')
   const [omitCallbacks, setOmitCallbacks] = useState(false)
@@ -63,6 +58,7 @@ export default function ExportSection() {
     customer_phone?: string
     timezone?: string
     calls_count?: number
+    last_call_date?: string
   }
   const [previewRows, setPreviewRows] = useState<LeadRow[]>([])
   const [page, setPage] = useState(1)
@@ -79,18 +75,41 @@ export default function ExportSection() {
   const handlePreview = async (newPage = 1) => {
     setLoading(true)
     try {
-  // preparar filtros
-  const filters: any = {}
-  if (omitDispositions.length > 0) filters.omitDispositions = omitDispositions
-  if (dateFrom) filters.dateFrom = dateFrom
-  if (dateTo) filters.dateTo = dateTo
-
-      // 1) Traer leads (base del listado)
-      const { data: leadsData } = await supabase
-        .from('leads')
-        .select('phone_number, business_name, timezone')
-        .limit(5000)
-      const leads = Array.isArray(leadsData) ? leadsData : []
+      // 1) Fetch ALL calls (no limit initially, or apply date filter directly to reduce dataset)
+      // Order by created_at DESC to get most recent calls first
+      let callsQuery = supabase
+        .from('calls')
+        .select('call_id,to_number,created_at')
+        .order('created_at', { ascending: false })
+      
+      // Apply date filter to calls query directly if provided
+      if (dateFrom) callsQuery = callsQuery.gte('created_at', dateFrom)
+      if (dateTo) callsQuery = callsQuery.lte('created_at', `${dateTo}T23:59:59.999Z`)
+      
+      const { data: callsRows } = await callsQuery.limit(100000)
+      let calls = Array.isArray(callsRows) ? callsRows : []
+      
+      // Build maps: counts for all calls, last call date, and unique phone numbers
+      const counts = new Map<string, number>()
+      const lastCallDates = new Map<string, string>()
+      const uniquePhones = new Set<string>()
+      
+      for (const c of calls) {
+        const phone = normalizePhone(c.to_number || '')
+        if (!phone) continue
+        
+        uniquePhones.add(phone)
+        counts.set(phone, (counts.get(phone) || 0) + 1)
+        
+        const currentDate = c.created_at
+        const existingDate = lastCallDates.get(phone)
+        if (!existingDate || (currentDate && currentDate > existingDate)) {
+          lastCallDates.set(phone, currentDate)
+        }
+      }
+      
+      setDebugCallsFetched(calls.length)
+      setDebugDistinctCalledNumbers(uniquePhones.size)
 
       // 2) Traer callbacks (solo to_number) si necesitamos omitir leads con callbacks
       let callbacksNumbers: string[] = []
@@ -103,62 +122,64 @@ export default function ExportSection() {
 
       // 3) Si el usuario seleccionó dispositions a omitir, traer los números
       // directamente desde PCA (pca.to_number) y construir phonesToExclude.
-      // Así excluiremos leads completos que tengan ANY PCA con esas dispositions.
       let phonesToExclude = new Set<string>()
       if (omitDispositions.length > 0) {
-        const pcaQuery = supabase.from('pca').select('to_number,created_at').in('disposition', omitDispositions)
-        if (dateFrom) pcaQuery.gte('created_at', dateFrom)
-        if (dateTo) pcaQuery.lte('created_at', `${dateTo}T23:59:59.999Z`)
-        const { data: pcaRows } = await pcaQuery
+        const { data: pcaRows } = await supabase
+          .from('pca')
+          .select('to_number,created_at')
+          .in('disposition', omitDispositions)
         const nums = Array.isArray(pcaRows) ? pcaRows.map((r: any) => normalizePhone(r.to_number)).filter(Boolean) : []
         phonesToExclude = new Set(nums)
       }
 
-      // Fetch calls to compute counts per to_number. Respect date filters if provided.
-      let callsQuery = supabase.from('calls').select('call_id,to_number,created_at')
-      if (dateFrom) callsQuery = callsQuery.gte('created_at', dateFrom)
-      if (dateTo) callsQuery = callsQuery.lte('created_at', `${dateTo}T23:59:59.999Z`)
-      const { data: callsRows } = await callsQuery.limit(20000)
-      let calls = Array.isArray(callsRows) ? callsRows : []
-      // build counts keyed by normalized to_number
-      const counts = new Map<string, number>()
-      for (const c of calls) {
-        const phone = normalizePhone(c.to_number || '')
-        if (!phone) continue
-        counts.set(phone, (counts.get(phone) || 0) + 1)
-      }
-      setDebugCallsFetched(calls.length)
-      setDebugDistinctCalledNumbers(counts.size)
-
-      // 4) Construir lista de leads aplicando filtros: callbacks & minCalls
-      let filteredLeads = leads.slice()
+      // 4) Get unique phone numbers after applying filters
+      let filteredPhones = Array.from(uniquePhones)
 
       if (omitCallbacks) {
-        filteredLeads = filteredLeads.filter((l: any) => !callbacksNumbers.includes(normalizePhone(l.phone_number)))
+        filteredPhones = filteredPhones.filter(phone => !callbacksNumbers.includes(phone))
       }
 
-      // Excluir leads que tengan ANY PCA con las dispositions seleccionadas
       if (phonesToExclude.size > 0) {
-        filteredLeads = filteredLeads.filter((l: any) => !phonesToExclude.has(normalizePhone(l.phone_number)))
+        filteredPhones = filteredPhones.filter(phone => !phonesToExclude.has(phone))
       }
 
       if (typeof minCalls === 'number' && minCalls > 0) {
-        filteredLeads = filteredLeads.filter((l: any) => (counts.get(normalizePhone(l.phone_number)) || 0) >= minCalls)
+        filteredPhones = filteredPhones.filter(phone => (counts.get(phone) || 0) === minCalls)
       }
 
-      // Map to LeadRow with calls_count
-      const leadRows: LeadRow[] = filteredLeads.map((l: any) => {
-        const norm = normalizePhone(l.phone_number)
-        const addressParts = [l.address_street, l.address_city, l.address_state, l.address_zip].filter(Boolean)
-        return {
-          phone_number: l.phone_number,
-          business_name: l.business_name,
-          address: addressParts.join(', '),
-          // leads table doesn't have customer_phone/timezone in current schema - leave empty or fallback
-          customer_phone: l.customer_phone || '',
-          timezone: l.timezone || '',
-          calls_count: counts.get(norm) || 0
+      // 5) Fetch lead info for these phone numbers from leads table
+      const { data: leadsData } = await supabase
+        .from('leads')
+        .select('phone_number, business_name, timezone')
+        .in('phone_number', filteredPhones.length > 0 ? filteredPhones : ['__NO_MATCH__'])
+      
+      const leadsMap = new Map<string, any>()
+      if (Array.isArray(leadsData)) {
+        for (const lead of leadsData) {
+          leadsMap.set(normalizePhone(lead.phone_number), lead)
         }
+      }
+
+      // 6) Build final lead rows with call data
+      const leadRows: LeadRow[] = filteredPhones.map(phone => {
+        const leadInfo = leadsMap.get(phone)
+        return {
+          phone_number: leadInfo?.phone_number || phone,
+          business_name: leadInfo?.business_name || '',
+          address: '',
+          customer_phone: leadInfo?.phone_number || phone,
+          timezone: leadInfo?.timezone || '',
+          calls_count: counts.get(phone) || 0,
+          last_call_date: lastCallDates.get(phone)
+        }
+      })
+
+      // Ordenar por fecha de última llamada (más reciente primero)
+      leadRows.sort((a, b) => {
+        if (!a.last_call_date && !b.last_call_date) return 0
+        if (!a.last_call_date) return 1
+        if (!b.last_call_date) return -1
+        return new Date(b.last_call_date).getTime() - new Date(a.last_call_date).getTime()
       })
 
       const totalResults = leadRows.length
@@ -169,7 +190,7 @@ export default function ExportSection() {
       const start = (newPage - 1) * limit
       const end = start + limit
   setPreviewRows(leadRows.slice(start, end))
-  setDebugLeadsPassingMinCalls(leadRows.filter(r => (r.calls_count || 0) >= (typeof minCalls === 'number' && minCalls > 0 ? minCalls : 0)).length)
+  setDebugLeadsPassingMinCalls(leadRows.filter(r => typeof minCalls === 'number' && minCalls > 0 ? (r.calls_count || 0) === minCalls : true).length)
     } catch (err) {
       console.error('Error previewing export:', err)
       setPreviewRows([])
@@ -183,13 +204,27 @@ export default function ExportSection() {
   const handleExport = async () => {
     setLoading(true)
     try {
-      // Export leads-centric CSV using same logic as preview but with larger limits
-      // 1) Traer leads
-      const { data: leadsData } = await supabase
-        .from('leads')
-        .select('phone_number, business_name, timezone')
-        .limit(20000)
-      const leads = Array.isArray(leadsData) ? leadsData : []
+      // 1) Fetch calls with date filter applied directly
+      let callsQuery = supabase
+        .from('calls')
+        .select('call_id,to_number,created_at')
+        .order('created_at', { ascending: false })
+      
+      if (dateFrom) callsQuery = callsQuery.gte('created_at', dateFrom)
+      if (dateTo) callsQuery = callsQuery.lte('created_at', `${dateTo}T23:59:59.999Z`)
+      
+      const { data: callsRows } = await callsQuery.limit(100000)
+      let calls = Array.isArray(callsRows) ? callsRows : []
+
+      const counts = new Map<string, number>()
+      const uniquePhones = new Set<string>()
+      
+      for (const c of calls) {
+        const phone = normalizePhone(c.to_number || '')
+        if (!phone) continue
+        uniquePhones.add(phone)
+        counts.set(phone, (counts.get(phone) || 0) + 1)
+      }
 
       // 2) callbacks numbers (only needed if we will omit leads with callbacks)
       let callbacksNumbers: string[] = []
@@ -200,39 +235,37 @@ export default function ExportSection() {
           : []
       }
 
-      // 3) calls (respect date/omit dispositions)
       // 3) Si el usuario seleccionó dispositions a omitir, traer los números
       // desde PCA (pca.to_number) y construir phonesToExclude para filtrar
       // leads completos.
       let phonesToExclude = new Set<string>()
       if (omitDispositions.length > 0) {
-        const pcaQuery = supabase.from('pca').select('to_number,created_at').in('disposition', omitDispositions)
-        if (dateFrom) pcaQuery.gte('created_at', dateFrom)
-        if (dateTo) pcaQuery.lte('created_at', `${dateTo}T23:59:59.999Z`)
-        const { data: pcaRows } = await pcaQuery
+        const { data: pcaRows } = await supabase
+          .from('pca')
+          .select('to_number,created_at')
+          .in('disposition', omitDispositions)
         const nums = Array.isArray(pcaRows) ? pcaRows.map((r: any) => normalizePhone(r.to_number)).filter(Boolean) : []
         phonesToExclude = new Set(nums)
       }
 
-      let callsQuery = supabase.from('calls').select('call_id,to_number,created_at')
-      if (dateFrom) callsQuery = callsQuery.gte('created_at', dateFrom)
-      if (dateTo) callsQuery = callsQuery.lte('created_at', `${dateTo}T23:59:59.999Z`)
-      const { data: callsRows } = await callsQuery.limit(20000)
-      let calls = Array.isArray(callsRows) ? callsRows : []
+      // 4) Filter phones
+      let filteredPhones = Array.from(uniquePhones)
+      if (omitCallbacks) filteredPhones = filteredPhones.filter(phone => !callbacksNumbers.includes(phone))
+      if (phonesToExclude.size > 0) filteredPhones = filteredPhones.filter(phone => !phonesToExclude.has(phone))
+      if (typeof minCalls === 'number' && minCalls > 0) filteredPhones = filteredPhones.filter(phone => (counts.get(phone) || 0) === minCalls)
 
-      const counts = new Map<string, number>()
-      for (const c of calls) {
-        const phone = normalizePhone(c.to_number || '')
-        if (!phone) continue
-        counts.set(phone, (counts.get(phone) || 0) + 1)
+      // 5) Fetch lead info
+      const { data: leadsData } = await supabase
+        .from('leads')
+        .select('phone_number, business_name, timezone')
+        .in('phone_number', filteredPhones.length > 0 ? filteredPhones : ['__NO_MATCH__'])
+      
+      const leadsMap = new Map<string, any>()
+      if (Array.isArray(leadsData)) {
+        for (const lead of leadsData) {
+          leadsMap.set(normalizePhone(lead.phone_number), lead)
+        }
       }
-
-  // Filter leads
-  let filteredLeads = leads.slice()
-  if (omitCallbacks) filteredLeads = filteredLeads.filter((l: any) => !callbacksNumbers.includes(normalizePhone(l.phone_number)))
-  // Excluir leads que tengan ANY PCA con las dispositions seleccionadas
-  if (phonesToExclude.size > 0) filteredLeads = filteredLeads.filter((l: any) => !phonesToExclude.has(normalizePhone(l.phone_number)))
-  if (typeof minCalls === 'number' && minCalls > 0) filteredLeads = filteredLeads.filter((l: any) => (counts.get(normalizePhone(l.phone_number)) || 0) >= minCalls)
 
       // Build CSV rows with the exact columns required by the user.
       // Columns (in this order):
@@ -240,12 +273,13 @@ export default function ExportSection() {
       // - business_name     (from leads.business_name)
       // - customer_phone    (same value as phone number)
       // - timezone          (from leads.timezone)
-      const csvRows = filteredLeads.map((l: any) => {
+      const csvRows = filteredPhones.map(phone => {
+        const leadInfo = leadsMap.get(phone)
         return {
-          'phone number': l.phone_number || '',
-          business_name: l.business_name || '',
-          customer_phone: l.phone_number || '',
-          timezone: l.timezone || ''
+          'phone number': leadInfo?.phone_number || phone,
+          business_name: leadInfo?.business_name || '',
+          customer_phone: leadInfo?.phone_number || phone,
+          timezone: leadInfo?.timezone || ''
         }
       })
 
@@ -276,24 +310,24 @@ export default function ExportSection() {
           </div>
           <div>
             <label className="block text-xs text-theme-text-muted">Omitir dispositions</label>
-            <div className="grid grid-cols-1 gap-1 mt-2">
-              {DISPOSITIONS.map(d => (
-                <label key={d} className="inline-flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={omitDispositions.includes(d)}
-                    onChange={(e) => {
-                      if (e.target.checked) setOmitDispositions(prev => [...prev, d])
-                      else setOmitDispositions(prev => prev.filter(x => x !== d))
-                    }}
-                  />
-                  <span className="text-theme-text-muted">{d}</span>
-                </label>
-              ))}
-            </div>
+              <div className="grid grid-cols-1 gap-1 mt-2">
+                {DISPOSITIONS.map(d => (
+                  <label key={d} className="inline-flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={omitDispositions.includes(d)}
+                      onChange={(e) => {
+                        if (e.target.checked) setOmitDispositions(prev => [...prev, d])
+                        else setOmitDispositions(prev => prev.filter(x => x !== d))
+                      }}
+                    />
+                    <span className="text-theme-text-muted">{d}</span>
+                  </label>
+                ))}
+              </div>
           </div>
           <div>
-            <label className="block text-xs text-theme-text-muted">Cantidad mínima de llamadas por número</label>
+            <label className="block text-xs text-theme-text-muted">Cantidad exacta de llamadas por número</label>
             <input type="number" min={0} value={minCalls as any} onChange={(e) => setMinCalls(e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-3 py-2 border rounded" />
           </div>
           <div>
@@ -331,13 +365,14 @@ export default function ExportSection() {
                   <th className="px-2 py-2">Nro Comercio</th>
                   <th className="px-2 py-2">Timezone</th>
                   <th className="px-2 py-2">Cantidad llamadas</th>
+                  <th className="px-2 py-2">Última llamada</th>
                 </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6} className="p-6 text-center">Cargando...</td></tr>
+                <tr><td colSpan={7} className="p-6 text-center">Cargando...</td></tr>
               ) : previewRows.length === 0 ? (
-                  <tr><td colSpan={6} className="p-6 text-center">No hay resultados. Haz click en Previsualizar.</td></tr>
+                  <tr><td colSpan={7} className="p-6 text-center">No hay resultados. Haz click en Previsualizar.</td></tr>
                 ) : previewRows.map((r) => (
                   <tr key={r.phone_number} className="border-t">
                     <td className="px-2 py-2 font-mono">{r.phone_number}</td>
@@ -346,6 +381,7 @@ export default function ExportSection() {
                     <td className="px-2 py-2">{r.customer_phone || '-'}</td>
                     <td className="px-2 py-2">{r.timezone || '-'}</td>
                     <td className="px-2 py-2">{r.calls_count ?? 0}</td>
+                    <td className="px-2 py-2">{r.last_call_date ? formatDateShort(r.last_call_date) : '-'}</td>
                   </tr>
                 ))}
             </tbody>

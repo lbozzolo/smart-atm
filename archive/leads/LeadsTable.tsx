@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Lead, getLeadsWithPagination, getCallHistoryByPhone, Call, CallInteraction, LeadPaginationParams, PaginatedLeadsResult } from '@/lib/supabase'
+import DISPOSITIONS from '@/config/dispositions'
 
 interface LeadsTableProps {
   onCallSelect?: (call: Call) => void
@@ -405,12 +406,10 @@ export default function LeadsTable({ onCallSelect }: LeadsTableProps) {
                     }}
                   >
                     <option value="all">Todas las disposiciones</option>
-                    <option value="new_lead">New Lead</option>
-                    <option value="possibly_interested">Possibly Interested</option>
-                    <option value="owner_not_present">Owner Not Present</option>
-                    <option value="not_interested">Not Interested</option>
-                    <option value="callback">Callback</option>
-                    <option value="successful">Successful</option>
+                    {/** Use central DISPOSITIONS to avoid duplicated literals across the app */}
+                    {DISPOSITIONS.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
                   </select>
                 </div>
                 

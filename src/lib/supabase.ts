@@ -193,9 +193,10 @@ export async function getCallsWithPagination(params: PaginationParams): Promise<
   try {
     console.log('🔍 Obteniendo llamadas paginadas:', params)
     
+    // Seleccionar solo las columnas que usamos en la UI para reducir transferencia
     let query = supabase
       .from('calls')
-      .select('*', { count: 'exact' })
+      .select('call_id,to_number,business_name,created_at,owner_name,owner_phone,disposition,agreed_amount,monthly_amount,company_key', { count: 'exact' })
 
     // Aplicar filtros de búsqueda
     if (params.search) {
@@ -225,7 +226,7 @@ export async function getCallsWithPagination(params: PaginationParams): Promise<
     const shouldSortByDisposition = params.sortBy === 'disposition'
     
     // Determinar si necesitamos aplicar filtros post-query
-    const needsPostQueryFiltering = params.filters?.disposition || shouldSortByDisposition
+  const needsPostQueryFiltering = params.filters?.disposition || shouldSortByDisposition
     
     // Aplicar ordenamiento (excepto para disposition)
     if (!shouldSortByDisposition) {
@@ -237,11 +238,50 @@ export async function getCallsWithPagination(params: PaginationParams): Promise<
       query = query.order('call_id', { ascending: false })
     }
 
-    // Determinar si necesitamos aplicar filtros post-query
-    
-    // Si necesitamos filtros post-query, obtener TODOS los registros primero
-    if (needsPostQueryFiltering) {
-      // No aplicar paginación aún, la aplicaremos después del filtrado
+    // Si el filtro es por disposition, es más eficiente consultar PCA primero
+    // y luego usar los call_id resultantes para filtrar la tabla calls en el servidor.
+    if (params.filters?.disposition) {
+      try {
+        // Construir consulta a PCA respetando el rango de fechas si fueron provistos
+        let pcaQ: any = supabase.from('pca').select('call_id, created_at').eq('disposition', params.filters.disposition)
+        if (params.filters.dateFrom) pcaQ = pcaQ.gte('created_at', params.filters.dateFrom)
+        if (params.filters.dateTo) pcaQ = pcaQ.lte('created_at', `${params.filters.dateTo}T23:59:59.999Z`)
+        // No pedir más de un cierto límite razonable para evitar sobrecargar la API
+        const PCA_PRE_QUERY_LIMIT = 20000
+        const pcaStart = Date.now()
+        const { data: pcaMatch, error: pcaMatchErr } = await pcaQ.limit(PCA_PRE_QUERY_LIMIT)
+        const pcaElapsed = Date.now() - pcaStart
+        if (pcaMatchErr) {
+          console.warn('Warning: could not fetch matching PCA for disposition filter:', pcaMatchErr)
+        }
+        const matchedCallIds = Array.isArray(pcaMatch) ? Array.from(new Set(pcaMatch.map((r: any) => r.call_id).filter(Boolean))) : []
+        // Si el conjunto de call_ids es demasiado grande, evitar construir un IN enorme
+        const IN_FALLBACK_THRESHOLD = 3000
+        if (matchedCallIds.length === 0) {
+          return {
+            data: [],
+            total: 0,
+            page: params.page,
+            limit: params.limit,
+            totalPages: 0
+          }
+        } else if (matchedCallIds.length > IN_FALLBACK_THRESHOLD) {
+          console.warn(`Large matchedCallIds (${matchedCallIds.length}) for disposition filter (took ${pcaElapsed}ms). Falling back to post-query filtering to avoid huge IN clauses.`)
+          // Aplicar paginación normal y luego filtrado post-query (comportamiento previo)
+          const offset = (params.page - 1) * params.limit
+          query = query.range(offset, offset + params.limit - 1)
+        } else {
+          // Limitar el set de calls a los que aparecen en pca con la disposition solicitada
+          query = query.in('call_id', matchedCallIds)
+          // Ahora que hemos restringido por call_id, podemos aplicar paginación en el servidor
+          const offset = (params.page - 1) * params.limit
+          query = query.range(offset, offset + params.limit - 1)
+        }
+      } catch (err) {
+        console.warn('Error optimizing disposition filter via PCA pre-query, falling back to default:', err)
+        const offset = (params.page - 1) * params.limit
+        query = query.range(offset, offset + params.limit - 1)
+      }
     } else {
       // Aplicar paginación normal para otros casos
       const offset = (params.page - 1) * params.limit

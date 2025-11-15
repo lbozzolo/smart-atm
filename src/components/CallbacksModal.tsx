@@ -13,6 +13,7 @@ import {
   type Callback,
   type PCA
 } from '@/lib/supabase'
+import DISPOSITIONS from '@/config/dispositions'
 
 interface CallbacksModalProps {
   isOpen: boolean
@@ -50,6 +51,9 @@ export default function CallbacksModal({ isOpen, onClose, callId, source }: Call
 
   // valor temporal usado en el flujo possibly_interested para marcar como not_interested u otras
   const [noPickerValue, setNoPickerValue] = useState('not_interested')
+
+  // Opciones por defecto para el picker 'No' en el flujo possibly_interested
+  const NO_PICKER_DEFAULTS = ['not_interested', 'invalid_number', 'no_answer', 'owner_not_present']
 
   useEffect(() => {
     if (isOpen && callId) fetchAll()
@@ -300,10 +304,9 @@ export default function CallbacksModal({ isOpen, onClose, callId, source }: Call
               <div className="text-sm">Marcar como:</div>
               <div className="flex items-center gap-2">
                 <select value={noPickerValue} onChange={(e) => setNoPickerValue(e.target.value)} className="px-2 py-1 border rounded text-sm">
-                  <option value="not_interested">not_interested</option>
-                  <option value="invalid_number">invalid_number</option>
-                  <option value="no_answer">no_answer</option>
-                  <option value="owner_not_present">owner_not_present</option>
+                  {NO_PICKER_DEFAULTS.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
                 </select>
                 <button onClick={() => handlePiMarkNotInterested(noPickerValue)} disabled={piSaving} className="px-3 py-1 bg-theme-primary text-white rounded">{piSaving ? 'Guardando...' : 'Guardar'}</button>
                 <button onClick={() => setPiChoice(null)} className="px-3 py-1 border rounded">Cancelar</button>
