@@ -354,9 +354,52 @@ export default function CallbacksModal({ isOpen, onClose, callId, source, allCal
     if (source === 'possibly_interested') {
       return (
         <div className="space-y-4">
-          {/* Pregunta ¿Es callback? - Ahora arriba para estar siempre visible */}
-          {piChoice === null && (
-            <div className="bg-white rounded-lg border-2 border-theme-primary/20 p-4 shadow-sm sticky top-0 z-10">
+          {/* Información de la llamada y el lead */}
+          <div className="bg-gradient-to-r from-slate-50 to-white rounded-lg border border-slate-200 p-4 shadow-sm">
+            <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Información de la llamada
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+              {/* Fecha y hora de la llamada */}
+              {pcaData && pcaData[0] && pcaData[0].created_at && (
+                <div>
+                  <span className="text-slate-500">Fecha/Hora:</span>
+                  <span className="ml-2 font-medium text-slate-800">
+                    {formatDate(pcaData[0].created_at)}
+                  </span>
+                </div>
+              )}
+              
+              {/* Datos del lead */}
+              {callData?.to_number && (
+                <div>
+                  <span className="text-slate-500">Teléfono:</span>
+                  <span className="ml-2 font-medium text-slate-800">{callData.to_number}</span>
+                </div>
+              )}
+              
+              {(callData as any)?.lead_business_name && (
+                <div>
+                  <span className="text-slate-500">Negocio:</span>
+                  <span className="ml-2 font-medium text-slate-800">{(callData as any).lead_business_name}</span>
+                </div>
+              )}
+              
+              {(callData as any)?.lead_timezone && (
+                <div>
+                  <span className="text-slate-500">Zona horaria:</span>
+                  <span className="ml-2 font-medium text-slate-800">{(callData as any).lead_timezone}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Pregunta ¿Es callback? o formulario según elección */}
+          <div className="bg-white rounded-lg border-2 border-theme-primary/20 p-4 shadow-sm sticky top-0 z-10">
+            {piChoice === null && (
               <div className="flex items-center justify-between">
                 <div className="text-base font-semibold text-theme-text-primary">¿Es callback?</div>
                 <div className="flex items-center gap-2">
@@ -374,8 +417,132 @@ export default function CallbacksModal({ isOpen, onClose, callId, source, allCal
                   </button>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+
+            {/* Si eligió Sí, mostrar formulario para crear callback */}
+            {piChoice === true && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                  <h3 className="text-base font-semibold text-theme-text-primary">Configurar Callback</h3>
+                  <button 
+                    onClick={() => { setPiChoice(null); setPiError(null) }} 
+                    className="text-sm text-slate-500 hover:text-slate-700"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Nombre del propietario
+                    </label>
+                    <input 
+                      autoFocus
+                      value={formOwnerName} 
+                      onChange={(e) => setFormOwnerName(e.target.value)} 
+                      placeholder="Ej: Juan Pérez"
+                      className="w-full px-3 py-2.5 border-2 border-slate-300 rounded-lg text-sm focus:border-theme-primary focus:ring-2 focus:ring-theme-primary/20 focus:outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Teléfono propietario
+                    </label>
+                    <input 
+                      value={formOwnerPhone} 
+                      onChange={(e) => setFormOwnerPhone(e.target.value)} 
+                      placeholder="Ej: 555-1234"
+                      className="w-full px-3 py-2.5 border-2 border-slate-300 rounded-lg text-sm focus:border-theme-primary focus:ring-2 focus:ring-theme-primary/20 focus:outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Horario solicitado
+                    </label>
+                    <input 
+                      value={formTimeText} 
+                      onChange={(e) => setFormTimeText(e.target.value)} 
+                      placeholder="Ej: mañana 10am"
+                      className="w-full px-3 py-2.5 border-2 border-slate-300 rounded-lg text-sm focus:border-theme-primary focus:ring-2 focus:ring-theme-primary/20 focus:outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                {piError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                    {piError}
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button 
+                    onClick={() => { setPiChoice(null); setPiError(null) }} 
+                    className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    onClick={handleCreateCallbackFromPI} 
+                    disabled={piSaving}
+                    className="px-6 py-3 bg-theme-primary text-white font-medium rounded-lg hover:bg-theme-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                  >
+                    {piSaving ? 'Guardando...' : 'Guardar callback'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Si eligió No, permitir marcar disposition sin crear callback */}
+            {piChoice === false && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                  <h3 className="text-base font-semibold text-theme-text-primary">Marcar disposición</h3>
+                  <button 
+                    onClick={() => setPiChoice(null)} 
+                    className="text-sm text-slate-500 hover:text-slate-700"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-medium text-slate-700">Selecciona disposición:</label>
+                  <select 
+                    value={noPickerValue} 
+                    onChange={(e) => setNoPickerValue(e.target.value)} 
+                    className="flex-1 px-3 py-2 border-2 border-slate-300 rounded-lg text-sm focus:border-theme-primary focus:ring-2 focus:ring-theme-primary/20 focus:outline-none"
+                  >
+                    {NO_PICKER_DEFAULTS.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {piError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                    {piError}
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2">
+                  <button 
+                    onClick={() => setPiChoice(null)} 
+                    className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    onClick={() => handlePiMarkNotInterested(noPickerValue)} 
+                    disabled={piSaving} 
+                    className="px-4 py-2 bg-theme-primary text-white rounded-lg hover:bg-theme-primary/90 font-medium transition-colors disabled:opacity-50"
+                  >
+                    {piSaving ? 'Guardando...' : 'Guardar'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Transcripción */}
           <div className="bg-white rounded-lg border border-slate-200 p-4">
@@ -405,50 +572,6 @@ export default function CallbacksModal({ isOpen, onClose, callId, source, allCal
               </div>
             )}
           </div>
-
-          {/* Si eligió Sí, mostrar formulario para crear callback */}
-          {piChoice === true && (
-            <div className="bg-white p-4 rounded border border-slate-200 space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs text-theme-text-muted">Nombre del propietario</label>
-                  <input value={formOwnerName} onChange={(e) => setFormOwnerName(e.target.value)} className="w-full px-2 py-2 border rounded text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-theme-text-muted">Teléfono propietario</label>
-                  <input value={formOwnerPhone} onChange={(e) => setFormOwnerPhone(e.target.value)} className="w-full px-2 py-2 border rounded text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-theme-text-muted">Horario solicitado (texto)</label>
-                  <input value={formTimeText} onChange={(e) => setFormTimeText(e.target.value)} className="w-full px-2 py-2 border rounded text-sm" />
-                </div>
-              </div>
-
-              {piError && <div className="text-sm text-red-600">{piError}</div>}
-
-              <div className="flex justify-end gap-2">
-                <button onClick={() => { setPiChoice(null); setPiError(null) }} className="px-3 py-1 border rounded">Cancelar</button>
-                <button onClick={handleCreateCallbackFromPI} disabled={piSaving} className="px-3 py-1 bg-theme-primary text-white rounded">{piSaving ? 'Guardando...' : 'Guardar callback'}</button>
-              </div>
-            </div>
-          )}
-
-          {/* Si eligió No, permitir marcar disposition sin crear callback */}
-          {piChoice === false && (
-            <div className="bg-white p-4 rounded border border-slate-200 space-y-3">
-              <div className="text-sm">Marcar como:</div>
-              <div className="flex items-center gap-2">
-                <select value={noPickerValue} onChange={(e) => setNoPickerValue(e.target.value)} className="px-2 py-1 border rounded text-sm">
-                  {NO_PICKER_DEFAULTS.map(d => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
-                <button onClick={() => handlePiMarkNotInterested(noPickerValue)} disabled={piSaving} className="px-3 py-1 bg-theme-primary text-white rounded">{piSaving ? 'Guardando...' : 'Guardar'}</button>
-                <button onClick={() => setPiChoice(null)} className="px-3 py-1 border rounded">Cancelar</button>
-              </div>
-              {piError && <div className="text-sm text-red-600">{piError}</div>}
-            </div>
-          )}
         </div>
       )
     }
