@@ -1855,6 +1855,7 @@ export async function createActivityLog(log: Partial<ActivityLog>) {
 
 export interface CallInteraction {
   id: string
+  call_id?: string
   type: 'call' | 'callback'
   date: string
   created_at: string
@@ -1934,6 +1935,7 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
       const pca = pcaMap.get(call.call_id)
       history.push({
         id: call.call_id,
+        call_id: call.call_id,
         type: 'call',
         date: call.created_at,
         created_at: call.created_at,
@@ -1952,6 +1954,7 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
     callbacks?.forEach(cb => {
       history.push({
         id: cb.id,
+        call_id: cb.call_id,
         type: 'callback',
         date: cb.created_at,
         created_at: cb.created_at,
