@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useAuth } from '@/components/ProtectedRoute'
 import ThemeToggle from '@/components/ThemeToggle'
 
@@ -44,7 +45,9 @@ export default function Header({ sidebarCollapsed, currentPage = 'Dashboard', pa
             <>
               <div className="text-sm text-theme-text-secondary">
                 <span className="text-theme-text-muted">Usuario:</span>
-                <span className="ml-2 font-medium text-theme-text-primary">{user.email}</span>
+                <Link href="/profile" className="ml-2 font-medium text-theme-text-primary hover:text-theme-primary transition-colors" title="Ver perfil">
+                  {user.email}
+                </Link>
               </div>
               <button
                 onClick={signOut}

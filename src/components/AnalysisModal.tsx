@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { getCallDetailsWithPCA, type PCA, type Call } from '@/lib/supabase'
+import { getCallDetailsWithPCA, getActivityLogs, createActivityLog, createSupabaseClient, type PCA, type Call, type ActivityLog } from '@/lib/supabase'
 
 interface AnalysisModalProps {
   isOpen: boolean
@@ -16,11 +16,20 @@ export default function AnalysisModal({ isOpen, onClose, callId, initialCallData
   const [callData, setCallData] = useState<Call | null>(initialCallData ?? null)
   const [isCallback, setIsCallback] = useState(false)
   const [callbackData, setCallbackData] = useState<any>(null)
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'overview' | 'transcript'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'transcript' | 'activity'>('overview')
   const [copied, setCopied] = useState(false)
   const [showRaw, setShowRaw] = useState(false)
+  
+  // Activity / Comments
+  const [newComment, setNewComment] = useState('')
+  const [commenting, setCommenting] = useState(false)
+  const MAX_COMMENT_LENGTH = 1000
+
+  // Instanciar cliente de supabase dentro del componente para asegurar acceso a sesión
+  const supabase = createSupabaseClient()
 
   useEffect(() => {
     if (isOpen && callId) {
@@ -34,16 +43,68 @@ export default function AnalysisModal({ isOpen, onClose, callId, initialCallData
       setError(null)
       console.log('🔍 Fetching data for callId:', callId)
       const { call, pca, isCallback: isCallbackResult, callback } = await getCallDetailsWithPCA(callId)
-      console.log('📊 Result:', { call, pca, isCallbackResult, callback })
+      const logs = await getActivityLogs(undefined, callId)
+      console.log('📊 Result:', { call, pca, isCallbackResult, callback, logs })
       setCallData(call)
       setPcaData(pca)
       setIsCallback(isCallbackResult)
       setCallbackData(callback)
+      setActivityLogs(logs)
       console.log('✅ State updated - isCallback:', isCallbackResult)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error desconocido')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleAddComment = async () => {
+    if (!newComment.trim()) return
+    
+    try {
+      setCommenting(true)
+      // Intentar obtener usuario de la sesión actual
+      let { data: { user } } = await supabase.auth.getUser()
+      
+      // Si no hay usuario (posiblemente por el cliente anon), intentar obtener sesión
+      if (!user) {
+        const { data: { session } } = await supabase.auth.getSession()
+        user = session?.user || null
+      }
+      
+      if (!user) {
+        alert('No se pudo identificar el usuario. Por favor recarga la página.')
+        return
+      }
+
+      // Buscar el lead_id asociado a esta llamada si existe
+      let leadId = null
+      if (callData?.to_number) {
+        const { data: lead } = await supabase
+          .from('leads')
+          .select('id')
+          .eq('phone_number', callData.to_number)
+          .single()
+        if (lead) leadId = lead.id
+      }
+
+      await createActivityLog({
+        call_id: callId,
+        lead_id: leadId || undefined,
+        user_id: user.id,
+        content: newComment.trim(),
+        activity_type: 'comment'
+      })
+
+      setNewComment('')
+      // Recargar logs
+      const logs = await getActivityLogs(undefined, callId)
+      setActivityLogs(logs)
+    } catch (err) {
+      console.error('Error adding comment:', err)
+      alert('Error al guardar el comentario')
+    } finally {
+      setCommenting(false)
     }
   }
 
@@ -182,10 +243,10 @@ export default function AnalysisModal({ isOpen, onClose, callId, initialCallData
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-      <div className="bg-theme-surface rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden border border-theme-border animate-in slide-in-from-bottom-2 duration-300">
+      <div className="bg-theme-surface rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-theme-border animate-in slide-in-from-bottom-2 duration-300">
         
         {/* Header compacto */}
-        <div className="bg-theme-surface-hover px-4 py-3 border-b border-theme-border">
+        <div className="flex-shrink-0 bg-theme-surface-hover px-4 py-3 border-b border-theme-border">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
               <div className="w-6 h-6 bg-theme-primary/10 rounded flex items-center justify-center">
@@ -268,6 +329,16 @@ export default function AnalysisModal({ isOpen, onClose, callId, initialCallData
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 )
+              },
+              {
+                id: 'activity',
+                label: 'Actividad',
+                icon: (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                ),
+                badge: activityLogs.length > 0 ? activityLogs.length : undefined
               }
             ].map((tab) => (
               <button
@@ -281,13 +352,22 @@ export default function AnalysisModal({ isOpen, onClose, callId, initialCallData
               >
                 <div className="text-xs">{tab.icon}</div>
                 <span>{tab.label}</span>
+                {tab.badge && (
+                  <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                    activeTab === tab.id 
+                      ? 'bg-white/20 text-white' 
+                      : 'bg-theme-primary/10 text-theme-primary'
+                  }`}>
+                    {tab.badge}
+                  </span>
+                )}
               </button>
             ))}
           </div>
         </div>
 
         {/* Contenido principal */}
-        <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
+        <div className="flex-1 overflow-y-auto min-h-0">
           {loading ? (
             <div className="flex flex-col items-center justify-center p-12">
               <div className="relative mb-4">
@@ -329,6 +409,100 @@ export default function AnalysisModal({ isOpen, onClose, callId, initialCallData
               {pcaData.map((pca, index) => (
                 <div key={pca.id} className="space-y-4">
                   
+                  {/* Actividad */}
+                  {activeTab === 'activity' && (
+                    <div className="bg-white rounded-lg border border-slate-200 p-4">
+                      <h3 className="text-sm font-semibold text-slate-800 mb-4">Historial de Actividad</h3>
+                      
+                      {/* Lista de logs */}
+                      <div className="space-y-4 mb-6 max-h-[400px] overflow-y-auto pr-2">
+                        {activityLogs.length === 0 ? (
+                          <div className="text-center py-8 text-theme-text-secondary text-sm bg-slate-50 rounded border border-slate-100">
+                            No hay actividad registrada para esta llamada.
+                          </div>
+                        ) : (
+                          activityLogs.map((log) => {
+                            const isStatusChange = log.activity_type === 'status_change'
+                            return (
+                              <div key={log.id} className={`flex space-x-3 border-b border-slate-100 last:border-0 pb-4 last:pb-0 ${isStatusChange ? 'bg-blue-50/50 -mx-2 px-2 py-3 rounded-lg border-none' : ''}`}>
+                                <div className="flex-shrink-0">
+                                  {isStatusChange ? (
+                                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                      </svg>
+                                    </div>
+                                  ) : log.user?.avatar_url ? (
+                                    <img src={log.user.avatar_url} alt={log.user.full_name} className="w-8 h-8 rounded-full" />
+                                  ) : (
+                                    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 text-xs font-bold">
+                                      {log.user?.full_name ? log.user.full_name.charAt(0).toUpperCase() : 'U'}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex-1">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className={`font-medium text-sm ${isStatusChange ? 'text-blue-900' : 'text-slate-900'}`}>
+                                      {log.user?.full_name || log.user?.email || 'Usuario'}
+                                    </span>
+                                    <span className="text-xs text-slate-500">
+                                      {new Date(log.created_at).toLocaleString()}
+                                    </span>
+                                  </div>
+                                  <p className={`text-sm whitespace-pre-wrap ${isStatusChange ? 'text-blue-800 font-medium' : 'text-slate-700'}`}>
+                                    {log.content}
+                                  </p>
+                                </div>
+                              </div>
+                            )
+                          })
+                        )}
+                      </div>
+
+                      {/* Formulario nuevo comentario */}
+                      <div className="border-t border-slate-200 pt-4">
+                        <label className="block text-xs font-medium text-slate-700 mb-2">Agregar comentario</label>
+                        <div className="relative">
+                          <textarea
+                            value={newComment}
+                            onChange={(e) => {
+                              if (e.target.value.length <= MAX_COMMENT_LENGTH) {
+                                setNewComment(e.target.value)
+                              }
+                            }}
+                            placeholder="Escribe una nota sobre esta llamada..."
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-theme-primary focus:border-transparent min-h-[80px]"
+                            disabled={commenting}
+                          />
+                          <div className="absolute bottom-2 right-2 text-xs text-slate-400">
+                            {newComment.length}/{MAX_COMMENT_LENGTH}
+                          </div>
+                        </div>
+                        <div className="flex justify-end mt-2">
+                          <button
+                            onClick={handleAddComment}
+                            disabled={!newComment.trim() || commenting}
+                            className="px-4 py-2 bg-theme-primary text-white rounded-lg text-sm font-medium hover:bg-theme-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                          >
+                            {commenting ? (
+                              <>
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                <span>Guardando...</span>
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                </svg>
+                                <span>Enviar comentario</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Vista General */}
                   {activeTab === 'overview' && (
                     <div className="space-y-4">

@@ -1,4 +1,3 @@
-
 import { createClient } from '@supabase/supabase-js'
 import { createBrowserClient } from '@supabase/ssr'
 
@@ -77,6 +76,32 @@ export interface Callback {
   event_type?: string
   from_number?: string
   to_number?: string
+  status?: string
+  resolved_by?: string
+  resolver?: Profile
+}
+
+export interface Profile {
+  id: string
+  full_name?: string
+  avatar_url?: string
+  email?: string
+  role?: string
+  is_active?: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ActivityLog {
+  id: string
+  created_at: string
+  lead_id?: string
+  call_id?: string
+  user_id?: string
+  content: string
+  activity_type?: string
+  metadata?: any
+  user?: Profile
 }
 
 // Definir el tipo de datos para la tabla pca
@@ -498,6 +523,7 @@ export async function getCallbacksByCallId(callId: string): Promise<Callback[]> 
 export interface CallbacksFilterParams {
   search?: string
   disposition?: string
+  status?: string
   dateFrom?: string // ISO date string (inclusive)
   dateTo?: string // ISO date string (inclusive)
   owner?: string
@@ -509,7 +535,7 @@ export async function getAllCallbacks(page = 1, limit = 50, filters?: CallbacksF
 
     let query: any = supabase
       .from('callbacks')
-      .select('*', { count: 'exact' })
+      .select('*, resolver:profiles!resolved_by(full_name, email)', { count: 'exact' })
       .order('created_at', { ascending: false })
 
     // Apply search across common text fields
@@ -520,6 +546,10 @@ export async function getAllCallbacks(page = 1, limit = 50, filters?: CallbacksF
 
     if (filters?.disposition) {
       query = query.eq('disposition', filters.disposition)
+    }
+
+    if (filters?.status) {
+      query = query.eq('status', filters.status)
     }
 
     if (filters?.owner) {
@@ -765,6 +795,7 @@ export async function updateCallbackById(id: string, fields: Partial<Callback>) 
       .from('callbacks')
       .update(fields)
       .eq('id', id)
+      .select()
       .single()
 
     if (error) {
@@ -902,29 +933,33 @@ export async function getCallBasicWithLead(callId: string) {
     const callRow = await getCallBasic(callId)
     if (!callRow) return null
 
-    // Try to fetch lead by to_number to pull lead.owner_name and timezone
+    // Try to fetch lead by to_number to pull lead.owner_name, business_name and timezone
     try {
       const toNumber = String((callRow as any).to_number || '')
       if (toNumber) {
         const { data: leadRow, error: leadErr } = await supabase
           .from('leads')
-          .select('owner_name, timezone')
+          .select('owner_name, business_name, timezone')
           .eq('phone_number', toNumber)
           .limit(1)
 
         if (!leadErr && leadRow && Array.isArray(leadRow) && leadRow.length > 0) {
           ;(callRow as any).lead_owner_name = leadRow[0].owner_name || null
+          ;(callRow as any).lead_business_name = leadRow[0].business_name || null
           ;(callRow as any).lead_timezone = leadRow[0].timezone || null
         } else {
           ;(callRow as any).lead_owner_name = null
+          ;(callRow as any).lead_business_name = null
           ;(callRow as any).lead_timezone = null
         }
       } else {
         ;(callRow as any).lead_owner_name = null
+        ;(callRow as any).lead_business_name = null
         ;(callRow as any).lead_timezone = null
       }
     } catch (e) {
       ;(callRow as any).lead_owner_name = null
+      ;(callRow as any).lead_business_name = null
       ;(callRow as any).lead_timezone = null
     }
 
@@ -1008,7 +1043,7 @@ export async function getCallDetailsWithPCA(callId: string): Promise<{ call: Cal
 
         const exactMatch = await supabase
           .from('leads')
-          .select('phone_number, business_name, owner_name, location_type, address_street, address_city, address_state, address_zip, business_hours, other_locations, agreed_amount, owner_phone')
+          .select('phone_number, business_name, owner_name, location_type, address, email, timezone')
           .eq('phone_number', rawNumber)
           .limit(1)
 
@@ -1029,7 +1064,7 @@ export async function getCallDetailsWithPCA(callId: string): Promise<{ call: Cal
           // Usamos ilike para buscar cualquier formato que contenga los últimos dígitos
           const { data: fuzzyData, error: fuzzyErr } = await supabase
             .from('leads')
-            .select('phone_number, business_name, owner_name, location_type, address_street, address_city, address_state, address_zip, business_hours, other_locations, agreed_amount, owner_phone')
+            .select('phone_number, business_name, owner_name, location_type, address, email, timezone')
             .ilike('phone_number', `%${last10}`)
             .limit(1)
 
@@ -1069,7 +1104,7 @@ export async function getCallDetailsWithPCA(callId: string): Promise<{ call: Cal
               if (att.desc.includes('exact') && pat.length >= 6) {
                 const { data: exData, error: exErr } = await supabase
                   .from('leads')
-                  .select('phone_number, business_name, owner_name, location_type, address_street, address_city, address_state, address_zip, business_hours, other_locations, agreed_amount, owner_phone')
+                  .select('phone_number, business_name, owner_name, location_type, address, email, timezone')
                   .eq('phone_number', pat)
                   .limit(1)
 
@@ -1083,7 +1118,7 @@ export async function getCallDetailsWithPCA(callId: string): Promise<{ call: Cal
               // probar ilike por sufijo
               const { data: sData, error: sErr } = await supabase
                 .from('leads')
-                .select('phone_number, business_name, owner_name, location_type, address_street, address_city, address_state, address_zip, business_hours, other_locations, agreed_amount, owner_phone')
+                .select('phone_number, business_name, owner_name, location_type, address, email, timezone')
                 .ilike('phone_number', `%${pat}`)
                 .limit(1)
 
@@ -1108,22 +1143,25 @@ export async function getCallDetailsWithPCA(callId: string): Promise<{ call: Cal
           // Preferir los valores de leads cuando existan
           callData.business_name = callData.business_name || leadRow.business_name
           callData.owner_name = callData.owner_name || leadRow.owner_name
-          callData.owner_email = callData.owner_email || leadRow.owner_email
+          callData.owner_email = callData.owner_email || leadRow.email
           callData.location_type = callData.location_type || leadRow.location_type
-          callData.address_street = callData.address_street || leadRow.address_street
-          callData.address_city = callData.address_city || leadRow.address_city
-          callData.address_state = callData.address_state || leadRow.address_state
-          callData.address_zip = callData.address_zip || leadRow.address_zip
-          callData.business_hours = callData.business_hours || leadRow.business_hours
-          callData.other_locations = callData.other_locations || leadRow.other_locations
-          callData.agreed_amount = callData.agreed_amount || leadRow.agreed_amount
-          callData.owner_phone = callData.owner_phone || leadRow.owner_phone || leadRow.phone_number
+          callData.address_street = callData.address_street || leadRow.address
+          // Campos de dirección detallada no existen en leads, se usa address como street
+          // callData.address_city = callData.address_city || leadRow.address_city
+          // callData.address_state = callData.address_state || leadRow.address_state
+          // callData.address_zip = callData.address_zip || leadRow.address_zip
+          // callData.business_hours = callData.business_hours || leadRow.business_hours
+          // callData.other_locations = callData.other_locations || leadRow.other_locations
+          // callData.agreed_amount = callData.agreed_amount || leadRow.agreed_amount
+          callData.owner_phone = callData.owner_phone || leadRow.phone_number
           // Also keep the raw lead phone for explicit use in the UI
           ;(callData as any).lead_phone = leadRow.phone_number || null
           // Also keep lead business name explicitly for UI priority
           ;(callData as any).lead_business_name = leadRow.business_name || null
           // Keep the raw lead owner name separately so the UI can prefer lead values explicitly
           ;(callData as any).lead_owner_name = leadRow.owner_name || null
+          // Keep timezone
+          ;(callData as any).lead_timezone = leadRow.timezone || null
         } else if (leadErr) {
           console.warn('Warning fetching leads for callDetails:', leadErr)
         }
@@ -1769,246 +1807,201 @@ export async function getLeadsWithPagination(params: LeadPaginationParams): Prom
     console.error('❌ Error en getLeadsWithPagination:', error)
     throw error
   }
-}// Interfaz para interacciones combinadas (calls + callbacks)
+}
+
+// Funciones para los registros de actividad
+
+export async function getActivityLogs(leadId?: string, callId?: string) {
+  try {
+    let query = supabase
+      .from('activity_logs')
+      .select('*, user:profiles(full_name, email, avatar_url)')
+      .order('created_at', { ascending: false })
+
+    if (leadId) {
+      query = query.eq('lead_id', leadId)
+    }
+    if (callId) {
+      query = query.eq('call_id', callId)
+    }
+
+    const { data, error } = await query
+
+    if (error) throw error
+    return data as ActivityLog[]
+  } catch (err) {
+    console.error('Error fetching activity logs:', err)
+    return []
+  }
+}
+
+export async function createActivityLog(log: Partial<ActivityLog>) {
+  try {
+    const { data, error } = await supabase
+      .from('activity_logs')
+      .insert(log)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  } catch (err) {
+    console.error('Error creating activity log:', err)
+    throw err
+  }
+}
+
+// Nueva interfaz y funciones para historial de llamadas por teléfono
+
 export interface CallInteraction {
+  id: string
   type: 'call' | 'callback'
-  call_id?: string
-  id?: string
-  disposition?: string
-  business_name?: string
-  owner_name?: string
-  agreed_amount?: number
-  address_street?: string
-  address_city?: string
-  address_state?: string
-  callback_time?: string
-  call_successful?: boolean
-  duration_ms?: number | null
-  disconnection_reason?: string | null
-  created_at?: string
   date: string
-  display_date: string
+  created_at: string
+  disposition?: string
+  agent?: string
+  duration?: number
+  notes?: string
+  transcript?: string
+  recording_url?: string
+  call_successful?: boolean
+  disconnection_reason?: string
+  agreed_amount?: number
   hasCallback?: boolean
 }
 
-// Función para obtener historial completo (calls + callbacks) por número de teléfono
 export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallInteraction[]> {
-  console.log(`📞 Obteniendo historial completo para: ${phoneNumber}`)
-  
   try {
-    // Obtener llamadas regulares
+    // 1. Obtener llamadas
     const { data: calls, error: callsError } = await supabase
       .from('calls')
-      .select('*')
-      .eq('to_number', phoneNumber)
-      .order('call_id', { ascending: false })
-    
-    if (callsError) {
-      console.error('❌ Error obteniendo llamadas:', callsError)
-      throw callsError
-    }
-    
-    console.log(`📞 Encontradas ${calls?.length || 0} llamadas para ${phoneNumber}`)
-    
-    // Obtener callbacks para ese número
-    const { data: callbacks, error: callbacksError } = await supabase
-      .from('callbacks')
-      .select('*')
+      .select(`
+        call_id,
+        created_at,
+        disposition,
+        agent_name,
+        transcript,
+        agreed_amount
+      `)
       .eq('to_number', phoneNumber)
       .order('created_at', { ascending: false })
+
+    if (callsError) throw callsError
+
+    // 2. Obtener callbacks
+    const { data: callbacks, error: callbacksError } = await supabase
+      .from('callbacks')
+      .select(`
+        id,
+        created_at,
+        disposition,
+        callback_owner_name,
+        resolution_notes,
+        call_id
+      `)
+      .eq('to_number', phoneNumber)
+      .order('created_at', { ascending: false })
+
+    if (callbacksError) throw callbacksError
+
+    // 3. Obtener PCA info para las llamadas
+    const callIds = calls?.map(c => c.call_id) || []
+    let pcaMap = new Map()
     
-    console.log(`🔄 Encontrados ${callbacks?.length || 0} callbacks para ${phoneNumber}`)
-    
-    if (callbacksError) {
-      console.error('❌ Error obteniendo callbacks:', callbacksError)
-      // No lanzamos error, solo logueamos
-    }
-    
-    // Obtener dispositions del PCA para las calls
-  let pcaMap = new Map()
-  let pcaSuccessMap = new Map()
-  let pcaDurationMap = new Map<string, number | null>()
-  let pcaDisconnectionMap = new Map<string, string | null>()
-    let callbackMap = new Map()
-    
-    if (calls && calls.length > 0) {
-      const callIds = calls.map(call => call.call_id)
-      
-      // Obtener dispositions, duración y razón de desconexión del PCA
+    if (callIds.length > 0) {
       const { data: pcaData } = await supabase
         .from('pca')
-        .select('call_id, disposition, call_successful, duration_ms, disconnection_reason')
+        .select('call_id, duration_ms, recording_url, call_successful, disconnection_reason')
         .in('call_id', callIds)
-
+      
       if (pcaData) {
-        pcaData.forEach(pca => {
-          pcaMap.set(pca.call_id, pca.disposition)
-          pcaSuccessMap.set(pca.call_id, pca.call_successful)
-          pcaDurationMap.set(pca.call_id, typeof pca.duration_ms !== 'undefined' ? pca.duration_ms : null)
-          pcaDisconnectionMap.set(pca.call_id, typeof pca.disconnection_reason !== 'undefined' ? pca.disconnection_reason : null)
-        })
+        pcaData.forEach(p => pcaMap.set(p.call_id, p))
       }
-      
-      // Obtener callbacks asociados a estas calls
-      const { data: associatedCallbacks } = await supabase
-        .from('callbacks')
-        .select('*')
-        .in('call_id', callIds)
-      
-      if (associatedCallbacks) {
-        associatedCallbacks.forEach(callback => {
-          if (callback.call_id) {
-            callbackMap.set(callback.call_id, callback)
-          } else {
-            console.log(`⚠️ Callback ${callback.id} no tiene call_id`)
-          }
-        })
-      }
-      
-      console.log(`🔗 Calls con callbacks asociados: ${Array.from(callbackMap.keys()).join(', ')}`)
-      console.log(`📋 Todos los call_ids de calls: ${(calls || []).map(c => c.call_id).join(', ')}`)
-      console.log(`📋 Todos los call_ids de callbacks: ${(callbacks || []).map(c => c.call_id).join(', ')}`)
     }
-    
-    // Combinar y marcar el tipo - SIN DUPLICAR
-    const allInteractions: CallInteraction[] = [
-      // Procesar todas las calls e indicar si tienen callback asociado
-      ...(calls || []).map(call => {
-        const hasCallback = callbackMap.has(call.call_id)
-  const pcaDisposition = pcaMap.get(call.call_id) || call.disposition
-  const callSuccessful = pcaSuccessMap.has(call.call_id) ? pcaSuccessMap.get(call.call_id) : call.call_successful
-  // Intentar obtener duration_ms desde PCA si está disponible
-  const pcaDuration = pcaDurationMap.has(call.call_id) ? pcaDurationMap.get(call.call_id) : undefined
-  const pcaDisconnection = pcaDisconnectionMap.has(call.call_id) ? pcaDisconnectionMap.get(call.call_id) : undefined
 
-        // Use created_at as the canonical date when available to avoid duplication and allow proper sorting
-        const canonicalDate = call.created_at || call.call_id || ''
-        const displayDate = call.created_at || call.call_id || ''
-
-        const result = {
-          ...call,
-          type: 'call' as const,
-          date: canonicalDate,
-          display_date: displayDate,
-          disposition: pcaDisposition,
-          call_successful: callSuccessful,
-          duration_ms: typeof pcaDuration !== 'undefined' ? pcaDuration : call.duration_ms,
-          disconnection_reason: typeof pcaDisconnection !== 'undefined' ? pcaDisconnection : call.disconnection_reason,
-          hasCallback
-        }
-
-        console.log(`📞 Call ${call.call_id}: disposition="${pcaDisposition}", call_successful=${callSuccessful}, hasCallback=${hasCallback}, date=${canonicalDate}`)
-
-        return result
-      }),
-      
-      // Procesar TODOS los callbacks (incluye los que tienen call asociada y los independientes)
-      ...((callbacks || []).filter(callback => {
-        // Si el callback está asociado a una call (misma call_id), NO incluirlo como entrada separada.
-        // En su lugar la llamada ya se muestra y está marcada con hasCallback.
-        const associatedCall = calls?.find(call => call.call_id === callback.call_id)
-        if (associatedCall) {
-          console.log(`Omitiendo callback ${callback.id || callback.call_id} porque existe call asociada ${associatedCall.call_id}`)
-          return false
-        }
-        return true
-      }).map(callback => {
-        const associatedCall = calls?.find(call => call.call_id === callback.call_id)
-  const pcaDisposition = associatedCall ? (pcaMap.get(callback.call_id) || associatedCall.disposition) : callback.disposition
-  const callSuccessful = associatedCall ? (pcaSuccessMap.has(callback.call_id) ? pcaSuccessMap.get(callback.call_id) : associatedCall.call_successful) : undefined
-  const pcaDisconnection = associatedCall ? (pcaDisconnectionMap.get(callback.call_id) || associatedCall.disconnection_reason) : callback.disconnection_reason
-
-        const result = {
-          ...callback,
-          type: 'callback' as const,
-          date: callback.created_at || callback.id,
-          display_date: callback.callback_time || callback.created_at || callback.id,
-          ...(associatedCall ? {
-            business_name: associatedCall.business_name,
-            owner_name: callback.callback_owner_name || associatedCall.owner_name,
-            address_street: associatedCall.address_street,
-            address_city: associatedCall.address_city,
-            address_state: associatedCall.address_state,
-            owner_phone: associatedCall.owner_phone,
-            agreed_amount: associatedCall.agreed_amount,
-            disposition: pcaDisposition,
-            call_successful: callSuccessful,
-            disconnection_reason: pcaDisconnection
-          } : {
-            business_name: callback.business_name,
-            owner_name: callback.callback_owner_name,
-            agreed_amount: undefined,
-            disposition: callback.disposition,
-            disconnection_reason: callback.disconnection_reason
-          }),
-          callback_time: callback.callback_time,
-          callback_owner_name: callback.callback_owner_name
-        }
-
-        console.log(`🔄 Callback ${callback.id || callback.call_id}: ${associatedCall ? 'con call asociada' : 'independiente'}, owner="${callback.callback_owner_name}", call_successful=${callSuccessful}`)
-
-        return result
-      }))
-    ]
-    
-    // Ordenar por fecha (más antiguos primero). Intentamos parsear ISO dates cuando sea posible.
-    allInteractions.sort((a, b) => {
-      const ta = Date.parse(a.date || '')
-      const tb = Date.parse(b.date || '')
-      if (!Number.isNaN(ta) && !Number.isNaN(tb)) {
-        return ta < tb ? -1 : (ta > tb ? 1 : 0)
-      }
-      // Fallback a comparación lexicográfica (ascendente)
-      const da = a.date || ''
-      const db = b.date || ''
-      if (da < db) return -1
-      if (da > db) return 1
-      return 0
+    // Mapa de callbacks por call_id para determinar hasCallback
+    const callbackMap = new Map()
+    callbacks?.forEach(cb => {
+      if (cb.call_id) callbackMap.set(cb.call_id, true)
     })
-    
-    console.log(`✅ Procesadas ${calls?.length || 0} llamadas (${(calls || []).filter(call => !callbackMap.has(call.call_id)).length} calls + ${callbacks?.length || 0} callbacks) para ${phoneNumber}`)
-    return allInteractions
-    
+
+    // 4. Unificar y formatear
+    const history: CallInteraction[] = []
+
+    calls?.forEach(call => {
+      const pca = pcaMap.get(call.call_id)
+      history.push({
+        id: call.call_id,
+        type: 'call',
+        date: call.created_at,
+        created_at: call.created_at,
+        disposition: call.disposition,
+        agent: call.agent_name,
+        duration: pca?.duration_ms ? Math.round(pca.duration_ms / 1000) : undefined,
+        transcript: call.transcript,
+        recording_url: pca?.recording_url,
+        call_successful: pca?.call_successful,
+        disconnection_reason: pca?.disconnection_reason,
+        agreed_amount: call.agreed_amount,
+        hasCallback: callbackMap.has(call.call_id)
+      })
+    })
+
+    callbacks?.forEach(cb => {
+      history.push({
+        id: cb.id,
+        type: 'callback',
+        date: cb.created_at,
+        created_at: cb.created_at,
+        disposition: cb.disposition,
+        agent: cb.callback_owner_name, // Usamos owner name como agente responsable si existe
+        notes: cb.resolution_notes
+      })
+    })
+
+    // Ordenar por fecha descendente
+    return history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
   } catch (error) {
-    console.error('❌ Error obteniendo historial completo:', error)
+    console.error('Error fetching call history:', error)
+    return []
+  }
+}
+
+// Nuevas funciones para obtener y actualizar el perfil de usuario
+
+export async function getUserProfile(userId: string): Promise<Profile | null> {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single()
+    
+    if (error) {
+      console.error('Error fetching profile:', error)
+      return null
+    }
+    return data
+  } catch (error) {
+    console.error('Error in getUserProfile:', error)
+    return null
+  }
+}
+
+export async function updateUserProfile(userId: string, updates: Partial<Profile>) {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', userId)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  } catch (error) {
+    console.error('Error updating profile:', error)
     throw error
-  }
-}
-
-// Función para contar cuántas llamadas tiene un número
-export async function getCallCountByPhone(phoneNumber: string): Promise<number> {
-  const { count, error } = await supabase
-    .from('calls')
-    .select('call_id', { count: 'exact', head: true })
-    .eq('to_number', phoneNumber)
-  
-  if (error) {
-    console.error('❌ Error contando llamadas:', error)
-    return 0
-  }
-  
-  return count || 0
-}
-
-// Función para verificar si una llamada tiene historial
-export async function hasCallHistory(callId: string): Promise<{ hasHistory: boolean; count: number; phoneNumber?: string }> {
-  // Primero obtenemos el to_number de la llamada actual
-  const { data: callData, error: callError } = await supabase
-    .from('calls')
-    .select('to_number')
-    .eq('call_id', callId)
-    .single()
-  
-  if (callError || !callData?.to_number) {
-    return { hasHistory: false, count: 0 }
-  }
-  
-  const phoneNumber = callData.to_number
-  const count = await getCallCountByPhone(phoneNumber)
-  
-  return { 
-    hasHistory: count > 1, 
-    count,
-    phoneNumber 
   }
 }
