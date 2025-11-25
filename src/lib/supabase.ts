@@ -1870,6 +1870,8 @@ export interface CallInteraction {
   agreed_amount?: number
   hasCallback?: boolean
   callback_time?: string
+  business_name?: string
+  owner_name?: string
 }
 
 export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallInteraction[]> {
@@ -1883,7 +1885,9 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
         disposition,
         agent_name,
         transcript,
-        agreed_amount
+        agreed_amount,
+        business_name,
+        owner_name
       `)
       .eq('to_number', phoneNumber)
       .order('created_at', { ascending: false })
@@ -1947,7 +1951,9 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
         call_successful: pca?.call_successful,
         disconnection_reason: pca?.disconnection_reason,
         agreed_amount: call.agreed_amount,
-        hasCallback: callbackMap.has(call.call_id)
+        hasCallback: callbackMap.has(call.call_id),
+        business_name: call.business_name,
+        owner_name: call.owner_name
       })
     })
 
@@ -1961,7 +1967,8 @@ export async function getCallHistoryByPhone(phoneNumber: string): Promise<CallIn
         disposition: cb.disposition,
         agent: cb.callback_owner_name, // Usamos owner name como agente responsable si existe
         notes: cb.resolution_notes,
-        callback_time: cb.callback_time
+        callback_time: cb.callback_time,
+        owner_name: cb.callback_owner_name // Mapeamos callback_owner_name a owner_name también
       })
     })
 
