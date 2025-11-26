@@ -230,13 +230,16 @@ export default function MetricsSection() {
   const totalCalls = totalCallsCount ?? 0
   // Calcular minutos totales consumidos usando todos los PCA
   const totalMinutes = Math.round(totalPcaMs / 1000 / 60)
+  
+  // Costo total: 0.21 USD por llamada
+  const totalCost = totalCalls * 0.21
 
   const successRate = totalCalls > 0 ? ((successfulCallsCount / totalCalls) * 100).toFixed(1) : 0
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
       <MetricCard
-        title="Total de Minutos"
+        title="Total de minutos consumidos"
         value={totalCalls.toLocaleString()}
         change={`Datos actuales`}
         icon={
@@ -249,9 +252,9 @@ export default function MetricsSection() {
       />
       
       <MetricCard
-        title="Llamadas con Venta"
-        value={`${successRate}%`}
-        change={`${successfulCallsCount} con monto acordado`}
+        title="Costo total"
+        value={`$${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+        change={`$0.21 por minuto`}
         icon={
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />

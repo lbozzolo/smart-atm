@@ -403,7 +403,6 @@ export default function ModernCallsTable() {
         <div className="px-4 py-4 border-b border-theme-border">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
             <div className="flex items-center space-x-4">
-              <h2 className="text-xl font-bold text-theme-text-primary">Tabla de Llamadas</h2>
               <span className="px-3 py-1 bg-theme-primary/10 text-theme-primary rounded-full text-sm font-medium">
                 {totalItems.toLocaleString()} registros
               </span>
