@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { getAllCallbacks, deleteCallbackById, updateCallbackDisposition, getPossiblyInterestedCallsWithoutCallbacks, updateCallbackById } from '@/lib/supabase'
+import { getAllCallbacks, deleteCallbackById, updateCallbackDisposition, getPossiblyInterestedCallsWithoutCallbacks, updateCallbackById, getCallbackStatusCounts } from '@/lib/supabase'
 import CallbacksModal from './CallbacksModal'
 import DISPOSITIONS from '@/config/dispositions'
 
@@ -50,6 +50,7 @@ export default function CallbacksList() {
   const [activeView, setActiveView] = useState<'callbacks' | 'possibly_interested'>('callbacks')
   
   const [filterStatus, setFilterStatus] = useState('pending')
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
   
   // Inline status editing
   const [editingStatusId, setEditingStatusId] = useState<string | null>(null)
@@ -90,6 +91,17 @@ export default function CallbacksList() {
         setPossiblyTotal(res.total || 0)
         setPossiblyTotalPages(res.totalPages || 1)
       } else {
+        // Cargar contadores en segundo plano
+        const countFilters = useFilters ? {
+          search: search || undefined,
+          disposition: filterDisposition || undefined,
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
+          // No pasamos status ni overrides que afecten status
+        } : undefined
+        
+        getCallbackStatusCounts(countFilters).then(counts => setStatusCounts(counts))
+
         const res: any = await getAllCallbacks(pageToLoad, limit, filters)
         setCallbacks(res.data || [])
         setTotal(res.total || 0)
@@ -246,25 +258,31 @@ export default function CallbacksList() {
             <div className="flex items-center space-x-1 overflow-x-auto no-scrollbar pb-1">
               <button
                 onClick={() => setFilterStatus('all')}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center space-x-2 ${
                   filterStatus === 'all'
                     ? 'border-theme-primary text-theme-primary'
                     : 'border-transparent text-theme-text-secondary hover:text-theme-text-primary hover:border-theme-border'
                 }`}
               >
-                Todos
+                <span>Todos</span>
+                <span className={`text-xs px-1.5 py-0.5 rounded-full ${filterStatus === 'all' ? 'bg-theme-primary/10 text-theme-primary' : 'bg-gray-100 text-gray-500'}`}>
+                  {statusCounts['all'] || 0}
+                </span>
               </button>
               {Object.entries(CALLBACK_STATUS_LABELS).map(([key, label]) => (
                 <button
                   key={key}
                   onClick={() => setFilterStatus(key)}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center space-x-2 ${
                     filterStatus === key
                       ? 'border-theme-primary text-theme-primary'
                       : 'border-transparent text-theme-text-secondary hover:text-theme-text-primary hover:border-theme-border'
                   }`}
                 >
-                  {label}
+                  <span>{label}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${filterStatus === key ? 'bg-theme-primary/10 text-theme-primary' : 'bg-gray-100 text-gray-500'}`}>
+                    {statusCounts[key] || 0}
+                  </span>
                 </button>
               ))}
             </div>

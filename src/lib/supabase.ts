@@ -1720,17 +1720,9 @@ export async function getLeadsWithPagination(params: LeadPaginationParams): Prom
       }
     }
 
-    // Aplicar callbacks
-    callbacksMap.forEach((callback, phoneNumber) => {
-      const lead = leadsMap.get(phoneNumber)
-      if (lead && (!lead.last_disposition || lead.last_disposition === 'Sin disposition')) {
-        lead.last_disposition = callback.disposition
-      }
-    })
-
+    // Aplicar filtros del lado del servidor
     let allLeads = Array.from(leadsMap.values())
 
-    // Aplicar filtros del lado del servidor
     const filters = params.filters
     if (filters) {
       if (filters.disposition && filters.disposition !== 'all') {
@@ -2016,5 +2008,54 @@ export async function updateUserProfile(userId: string, updates: Partial<Profile
   } catch (error) {
     console.error('Error updating profile:', error)
     throw error
+  }
+}
+
+// Nueva función para obtener conteos de estado de callbacks, respetando filtros actuales
+export async function getCallbackStatusCounts(filters?: Omit<CallbacksFilterParams, 'status'>) {
+  try {
+    // Helper to create a fresh query builder with base filters applied
+    const createBaseQuery = () => {
+      let query = supabase.from('callbacks').select('*', { count: 'exact', head: true })
+      
+      if (filters?.search) {
+        const s = filters.search.replace(/%/g, '\\%')
+        query = query.or(`to_number.ilike.%${s}%,callback_owner_name.ilike.%${s}%,callback_time_text_raw.ilike.%${s}%`)
+      }
+      if (filters?.disposition) query = query.eq('disposition', filters.disposition)
+      if (filters?.owner) {
+        const o = filters.owner.replace(/%/g, '\\%')
+        query = query.ilike('callback_owner_name', `%${o}%`)
+      }
+      if (filters?.dateFrom) query = query.gte('created_at', filters.dateFrom)
+      if (filters?.dateTo) query = query.lte('created_at', filters.dateTo)
+      
+      return query
+    }
+
+    // Execute counts in parallel for all known statuses + total
+    const statuses = ['pending', 'in_progress', 'completed', 'retry_scheduled', 'cancelled']
+    
+    const promises = [
+      // Total count (all statuses)
+      createBaseQuery(),
+      // Per status counts
+      ...statuses.map(status => createBaseQuery().eq('status', status))
+    ]
+
+    const results = await Promise.all(promises)
+    
+    const counts: Record<string, number> = {
+      all: results[0].count || 0
+    }
+
+    statuses.forEach((status, index) => {
+      counts[status] = results[index + 1].count || 0
+    })
+
+    return counts
+  } catch (error) {
+    console.error('Error fetching callback status counts:', error)
+    return { all: 0 }
   }
 }
