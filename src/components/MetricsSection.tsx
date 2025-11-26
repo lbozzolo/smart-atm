@@ -236,15 +236,8 @@ export default function MetricsSection() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
       <MetricCard
-        title="Total de Llamadas"
-        value={
-          <>
-            {totalCalls.toLocaleString()}
-            <span className="text-xs text-theme-text-muted ml-2 align-middle">
-              ({totalMinutes.toLocaleString()} min)
-            </span>
-          </>
-        }
+        title="Total de Minutos"
+        value={totalCalls.toLocaleString()}
         change={`Datos actuales`}
         icon={
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
