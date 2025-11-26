@@ -69,24 +69,49 @@ function MetricCard({ title, value, change, icon, color, trend = 'neutral' }: Me
 
 export default function MetricsSection() {
   const [totalCallbacks, setTotalCallbacks] = useState(0)
-  const [totalPcaMs, setTotalPcaMs] = useState(0)
   const [totalCallsCount, setTotalCallsCount] = useState<number | null>(null)
   const [successfulCallsCount, setSuccessfulCallsCount] = useState<number>(0)
   const [avgAmount, setAvgAmount] = useState<number>(0)
   const [loading, setLoading] = useState(true)
+  
+  // Estados para los inputs (selección temporal)
+  const [dateFrom, setDateFrom] = useState<string>('')
+  const [dateTo, setDateTo] = useState<string>('')
+  
+  // Estados para la query actual (filtros aplicados)
+  const [appliedDateFrom, setAppliedDateFrom] = useState<string>('')
+  const [appliedDateTo, setAppliedDateTo] = useState<string>('')
+
+  const handleApplyFilters = () => {
+    setAppliedDateFrom(dateFrom)
+    setAppliedDateTo(dateTo)
+  }
+
+  const handleClearFilters = () => {
+    setDateFrom('')
+    setDateTo('')
+    setAppliedDateFrom('')
+    setAppliedDateTo('')
+  }
 
   useEffect(() => {
     async function fetchMetrics() {
       try {
-        // Obtener conteo exacto de llamadas (para evitar límites por página)
+        setLoading(true)
+        
+        // Obtener conteo exacto de llamadas
         try {
-          const { count: callsCount, error: callsCountError } = await supabase
+          let query = supabase
             .from('calls')
             .select('call_id', { head: true, count: 'exact' })
+          
+          if (appliedDateFrom) query = query.gte('created_at', appliedDateFrom)
+          if (appliedDateTo) query = query.lte('created_at', appliedDateTo)
+
+          const { count: callsCount, error: callsCountError } = await query
 
           if (!callsCountError) {
             setTotalCallsCount(callsCount || 0)
-            console.log('📞 Total de llamadas (conteo exacto):', callsCount)
           } else {
             console.warn('Warning fetching exact calls count:', callsCountError)
           }
@@ -94,15 +119,19 @@ export default function MetricsSection() {
           console.warn('Warning: could not fetch exact calls count', err)
         }
 
-        // Obtener callbacks de la tabla callbacks (conteo exacto)
+        // Obtener callbacks de la tabla callbacks
         try {
-          const { count: callbacksCount, error: callbacksCountError } = await supabase
+          let query = supabase
             .from('callbacks')
             .select('id', { head: true, count: 'exact' })
+          
+          if (appliedDateFrom) query = query.gte('created_at', appliedDateFrom)
+          if (appliedDateTo) query = query.lte('created_at', appliedDateTo)
+
+          const { count: callbacksCount, error: callbacksCountError } = await query
 
           if (!callbacksCountError) {
             setTotalCallbacks(callbacksCount || 0)
-            console.log('📞 Total callbacks encontrados en tabla callbacks:', callbacksCount)
           } else {
             console.warn('Warning fetching exact callbacks count:', callbacksCountError)
             setTotalCallbacks(0)
@@ -112,63 +141,17 @@ export default function MetricsSection() {
           setTotalCallbacks(0)
         }
 
-        // Obtener suma de duration_ms desde el servidor usando RPC para evitar problemas de paginación
-        try {
-          const { data: rpcData, error: rpcError } = await supabase.rpc('sum_pca_duration_ms')
-          if (rpcError) {
-            console.warn('RPC sum_pca_duration_ms not available or error:', rpcError)
-            // Fallback: traer hasta 10000 filas de pca.duration_ms y sumar en cliente
-            try {
-              const { data: pcaData, error: pcaError } = await supabase
-                .from('pca')
-                .select('duration_ms')
-                .limit(10000)
-
-              if (pcaError) {
-                console.error('Error fetching PCA (fallback):', pcaError)
-                setTotalPcaMs(0)
-              } else {
-                const totalMs = (pcaData || []).reduce((sum, pca) => sum + (pca.duration_ms || 0), 0)
-                setTotalPcaMs(totalMs)
-              }
-            } catch (err2) {
-              console.error('Fallback fetch error:', err2)
-              setTotalPcaMs(0)
-            }
-          } else {
-            // supabase-js puede devolver el valor como número simple o como array; normalizamos
-            let totalMs = 0
-            if (Array.isArray(rpcData)) {
-              // try first element
-              totalMs = Number(rpcData[0]) || 0
-            } else {
-              totalMs = Number(rpcData) || 0
-            }
-            setTotalPcaMs(totalMs)
-          }
-        } catch (err) {
-          console.error('Exception calling RPC sum_pca_duration_ms:', err)
-          // último recurso: intentar traer algunas filas
-          try {
-            const { data: pcaData2, error: pcaErr2 } = await supabase.from('pca').select('duration_ms').limit(10000)
-            if (pcaErr2) {
-              console.error('Error fetching PCA final fallback:', pcaErr2)
-              setTotalPcaMs(0)
-            } else {
-              const totalMs = (pcaData2 || []).reduce((sum, pca) => sum + (pca.duration_ms || 0), 0)
-              setTotalPcaMs(totalMs)
-            }
-          } catch (err2) {
-            console.error('Final fallback failed:', err2)
-            setTotalPcaMs(0)
-          }
-        }
         // Obtener conteo de llamadas con agreed_amount > 0 (éxitos)
         try {
-          const { count: successCount, error: successCountErr } = await supabase
+          let query = supabase
             .from('calls')
             .select('agreed_amount', { head: true, count: 'exact' })
             .gt('agreed_amount', 0)
+          
+          if (appliedDateFrom) query = query.gte('created_at', appliedDateFrom)
+          if (appliedDateTo) query = query.lte('created_at', appliedDateTo)
+
+          const { count: successCount, error: successCountErr } = await query
 
           if (!successCountErr) {
             setSuccessfulCallsCount(successCount || 0)
@@ -178,13 +161,18 @@ export default function MetricsSection() {
           setSuccessfulCallsCount(0)
         }
 
-        // Obtener muestra para calcular promedio de agreed_amount (limitar para no traer todo)
+        // Obtener muestra para calcular promedio de agreed_amount
         try {
-          const { data: agreedRows, error: agreedErr } = await supabase
+          let query = supabase
             .from('calls')
             .select('agreed_amount')
             .gt('agreed_amount', 0)
             .limit(10000)
+          
+          if (appliedDateFrom) query = query.gte('created_at', appliedDateFrom)
+          if (appliedDateTo) query = query.lte('created_at', appliedDateTo)
+
+          const { data: agreedRows, error: agreedErr } = await query
 
           if (!agreedErr && Array.isArray(agreedRows) && agreedRows.length > 0) {
             const total = agreedRows.reduce((sum: number, r: any) => sum + (r.agreed_amount || 0), 0)
@@ -205,7 +193,7 @@ export default function MetricsSection() {
     }
 
     fetchMetrics()
-  }, [])
+  }, [appliedDateFrom, appliedDateTo])
 
   if (loading) {
     return (
@@ -228,8 +216,6 @@ export default function MetricsSection() {
 
   // Calcular métricas
   const totalCalls = totalCallsCount ?? 0
-  // Calcular minutos totales consumidos usando todos los PCA
-  const totalMinutes = Math.round(totalPcaMs / 1000 / 60)
   
   // Costo total: 0.21 USD por llamada
   const totalCost = totalCalls * 0.21
@@ -237,58 +223,99 @@ export default function MetricsSection() {
   const successRate = totalCalls > 0 ? ((successfulCallsCount / totalCalls) * 100).toFixed(1) : 0
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-      <MetricCard
-        title="Total de minutos consumidos"
-        value={totalCalls.toLocaleString()}
-        change={`Datos actuales`}
-        icon={
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-          </svg>
-        }
-        color="primary"
-        trend="neutral"
-      />
-      
-      <MetricCard
-        title="Costo total"
-        value={`$${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-        change={`$0.21 por minuto`}
-        icon={
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-          </svg>
-        }
-        color="success"
-        trend="neutral"
-      />
-      
-      <MetricCard
-        title="Callbacks Programados"
-        value={totalCallbacks.toLocaleString()}
-        change={totalCallbacks === 1 ? '1 callback registrado' : `${totalCallbacks} callbacks registrados`}
-        icon={
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-        }
-        color="accent"
-        trend="neutral"
-      />
-      
-      <MetricCard
-        title="Monto Promedio"
-        value={avgAmount > 0 ? `$${Math.round(avgAmount).toLocaleString()}` : 'N/A'}
-        change={successfulCallsCount > 0 ? `${successfulCallsCount} con montos` : 'Sin montos registrados'}
-        icon={
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-          </svg>
-        }
-        color="warning"
-        trend="neutral"
-      />
+    <div className="space-y-6 mb-8">
+      <div className="flex flex-wrap items-center gap-4 bg-theme-surface p-4 rounded-xl border border-theme-border">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-theme-text-secondary">Desde:</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="px-3 py-2 bg-theme-bg border border-theme-border rounded-lg text-sm text-theme-text-primary focus:outline-none focus:ring-2 focus:ring-theme-primary/50"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-theme-text-secondary">Hasta:</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="px-3 py-2 bg-theme-bg border border-theme-border rounded-lg text-sm text-theme-text-primary focus:outline-none focus:ring-2 focus:ring-theme-primary/50"
+          />
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleApplyFilters}
+            className="px-4 py-2 text-sm font-medium text-white bg-theme-primary hover:bg-theme-primary/90 rounded-lg transition-colors shadow-sm"
+          >
+            Aplicar filtros
+          </button>
+          
+          {(dateFrom || dateTo || appliedDateFrom || appliedDateTo) && (
+            <button
+              onClick={handleClearFilters}
+              className="px-4 py-2 text-sm font-medium text-theme-error hover:bg-theme-error/10 rounded-lg transition-colors"
+            >
+              Limpiar
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <MetricCard
+          title="Total de minutos consumidos"
+          value={totalCalls.toLocaleString()}
+          change={`Datos actuales`}
+          icon={
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+            </svg>
+          }
+          color="primary"
+          trend="neutral"
+        />
+        
+        <MetricCard
+          title="Costo total"
+          value={`$${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          change={`$0.21 por minuto`}
+          icon={
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+            </svg>
+          }
+          color="success"
+          trend="neutral"
+        />
+        
+        <MetricCard
+          title="Callbacks Programados"
+          value={totalCallbacks.toLocaleString()}
+          change={totalCallbacks === 1 ? '1 callback registrado' : `${totalCallbacks} callbacks registrados`}
+          icon={
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          }
+          color="accent"
+          trend="neutral"
+        />
+        
+        <MetricCard
+          title="Monto Promedio"
+          value={avgAmount > 0 ? `$${Math.round(avgAmount).toLocaleString()}` : 'N/A'}
+          change={successfulCallsCount > 0 ? `${successfulCallsCount} con montos` : 'Sin montos registrados'}
+          icon={
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+            </svg>
+          }
+          color="warning"
+          trend="neutral"
+        />
+      </div>
     </div>
   )
 }

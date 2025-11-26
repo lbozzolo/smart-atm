@@ -51,12 +51,12 @@ export default function ProfilePage() {
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
-        <Sidebar activeItem="" />
+        <Sidebar activeItem="profile" />
         <Header sidebarCollapsed={sidebarCollapsed} currentPage="Perfil" pageTitle="Mi Perfil" />
         
         <main className={`
           pt-20 pb-8 px-6 transition-all duration-300
-          ${sidebarCollapsed ? 'ml-20' : 'ml-64'}
+          ml-[32rem]
         `}>
           <div className="max-w-3xl mx-auto">
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -101,15 +101,6 @@ export default function ProfilePage() {
                       className="w-full px-4 py-2 rounded-lg border border-slate-300 bg-slate-50 text-slate-500 cursor-not-allowed"
                     />
                     <p className="mt-1 text-xs text-slate-400">El email no se puede cambiar.</p>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      ID de Usuario
-                    </label>
-                    <div className="font-mono text-xs bg-slate-50 p-3 rounded border border-slate-200 text-slate-500 select-all">
-                      {user?.id}
-                    </div>
                   </div>
                 </div>
 

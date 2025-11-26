@@ -16,7 +16,7 @@ export default function ExportPage() {
 
         <Header sidebarCollapsed={sidebarCollapsed} currentPage="Exportación" pageTitle="Exportación de datos" />
 
-        <main className={`pt-20 pb-8 px-6 transition-all duration-300 ${sidebarCollapsed ? 'ml-20' : 'ml-64'}`}>
+        <main className={`pt-20 pb-8 px-6 transition-all duration-300 ml-[32rem]`}>
           <div className="max-w-7xl mx-auto space-y-8">
             <div className="py-6">
               <h1 className="text-3xl font-bold text-slate-800 mb-4">Exportación</h1>

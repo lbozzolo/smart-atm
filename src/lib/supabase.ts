@@ -618,95 +618,22 @@ export async function getPossiblyInterestedCallsWithoutCallbacks(page = 1, limit
   try {
     const offset = (page - 1) * limit
 
-    // 1) Obtener call_ids desde PCA con disposition = 'possibly_interested'
-    const { data: pcaData, error: pcaErr } = await supabase
-      .from('pca')
-      .select('call_id')
-      .eq('disposition', 'possibly_interested')
-
-    if (pcaErr) {
-      console.error('Error fetching PCA call_ids:', pcaErr)
-      throw pcaErr
-    }
-
-    const pcaIds = Array.isArray(pcaData) ? Array.from(new Set(pcaData.map((r: any) => r.call_id).filter(Boolean))) : []
-
-    if (pcaIds.length === 0) {
-      return { data: [], total: 0, page, limit, totalPages: 0 }
-    }
-
-    // 2) Obtener call_ids que ya tienen callbacks
-    const { data: cbIdsData, error: cbErr } = await supabase
-      .from('callbacks')
-      .select('call_id')
-
-    if (cbErr) {
-      console.error('Error fetching callback call_ids:', cbErr)
-      throw cbErr
-    }
-
-    const cbIds = Array.isArray(cbIdsData) ? cbIdsData.map((r: any) => r.call_id).filter(Boolean) : []
-
-    // 3) Filtrar pcaIds para excluir aquellos con callbacks
-    const targetIds = pcaIds.filter((id: string) => !cbIds.includes(id))
-
-    if (targetIds.length === 0) {
-      return { data: [], total: 0, page, limit, totalPages: 0 }
-    }
-
-    // 4) Consultar calls cuya call_id esté en targetIds
-    let query: any = supabase
-      .from('calls')
-      .select('*', { count: 'exact' })
-      .in('call_id', targetIds)
-      .order('created_at', { ascending: false })
-
-    if (filters?.search) {
-      const s = filters.search.replace(/%/g, '\\%')
-      query = query.or(`to_number.ilike.%${s}%,agent_name.ilike.%${s}%,business_name.ilike.%${s}%`)
-    }
-
-    if (filters?.dateFrom) query = query.gte('created_at', filters.dateFrom)
-    if (filters?.dateTo) query = query.lte('created_at', filters.dateTo)
-
-    const { data, count, error } = await query.range(offset, offset + limit - 1)
+    // Use RPC for efficient server-side filtering
+    const { data, error } = await supabase.rpc('get_possibly_interested_calls_without_callbacks', {
+      p_limit: limit,
+      p_offset: offset,
+      p_search: filters?.search || null,
+      p_date_from: filters?.dateFrom || null,
+      p_date_to: filters?.dateTo || null
+    })
 
     if (error) {
-      console.error('Error fetching possibly_interested calls without callbacks:', error)
+      console.error('Error fetching possibly_interested calls via RPC:', error)
       throw error
     }
 
-  // Adjuntar disposition desde PCA (última entrada por call_id) para mostrar en la UI
     const callsData = data || []
-
-    try {
-      const { data: pcaRows } = await supabase
-        .from('pca')
-        .select('call_id, disposition, created_at')
-        .in('call_id', targetIds)
-        .order('created_at', { ascending: false })
-
-      const latestPcaByCall: Record<string, any> = {}
-      if (Array.isArray(pcaRows)) {
-        for (const row of pcaRows) {
-          const cid = row.call_id
-          if (!latestPcaByCall[cid]) {
-
-    
-            latestPcaByCall[cid] = row
-          }
-        }
-      }
-
-      // Attach disposition from PCA if present
-      for (const c of callsData) {
-        const p = latestPcaByCall[c.call_id]
-        if (p && p.disposition) c.disposition = p.disposition
-      }
-    } catch (e) {
-      // no fatal: seguimos devolviendo llamadas sin disposition desde PCA
-      console.warn('Warning: no se pudo adjuntar PCA.disposition:', e)
-    }
+    const total = callsData.length > 0 ? Number(callsData[0].full_count) : 0
 
     // Adjuntar business_name desde tabla leads (matching via calls.to_number = leads.phone_number)
     try {
@@ -725,6 +652,7 @@ export async function getPossiblyInterestedCallsWithoutCallbacks(page = 1, limit
         }
 
         for (const c of callsData) {
+          // Only override if call doesn't have business_name or if we prefer lead's business_name
           const lead = leadsByPhone[c.to_number]
           if (lead && lead.business_name) c.business_name = lead.business_name
         }
@@ -735,10 +663,10 @@ export async function getPossiblyInterestedCallsWithoutCallbacks(page = 1, limit
 
     return {
       data: callsData,
-      total: count || (callsData ? callsData.length : 0),
+      total: total,
       page,
       limit,
-      totalPages: Math.ceil((count || (callsData ? callsData.length : 0)) / limit)
+      totalPages: Math.ceil(total / limit)
     }
   } catch (err) {
     console.error('Error in getPossiblyInterestedCallsWithoutCallbacks:', err)
