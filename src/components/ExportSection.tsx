@@ -132,47 +132,95 @@ export default function ExportSection() {
         phonesToExclude = new Set(nums)
       }
 
-      // 4) Get unique phone numbers after applying filters
-      let filteredPhones = Array.from(uniquePhones)
+      // 4) Logic split: if minCalls === 0, we look for leads NOT in calls. Otherwise we look at calls.
+      let leadRows: LeadRow[] = []
 
-      if (omitCallbacks) {
-        filteredPhones = filteredPhones.filter(phone => !callbacksNumbers.includes(phone))
+      if (minCalls === 0) {
+          // Fetch all leads to find those with 0 calls
+          let allLeads: any[] = []
+          let hasMore = true
+          let p = 0
+          const pageSize = 1000
+          while (hasMore) {
+            const { data, error } = await supabase
+              .from('leads')
+              .select('phone_number, business_name, timezone')
+              .range(p * pageSize, (p + 1) * pageSize - 1)
+            
+            if (error || !data || data.length === 0) {
+              hasMore = false
+            } else {
+              allLeads = allLeads.concat(data)
+              if (data.length < pageSize) hasMore = false
+              p++
+            }
+            if (p > 100) break // Safety break
+          }
+
+          // Filter: Keep leads NOT in uniquePhones (called numbers)
+          // Also apply omitCallbacks if needed
+          leadRows = allLeads
+            .filter(l => {
+                const phone = normalizePhone(l.phone_number)
+                if (!phone) return false
+                if (uniquePhones.has(phone)) return false // Has calls
+                if (omitCallbacks && callbacksNumbers.includes(phone)) return false
+                // omitDispositions is irrelevant for 0 calls
+                return true
+            })
+            .map(l => ({
+                phone_number: l.phone_number,
+                business_name: l.business_name,
+                address: '',
+                customer_phone: l.phone_number,
+                timezone: l.timezone,
+                calls_count: 0,
+                last_call_date: undefined
+            }))
+
+      } else {
+          // Existing logic for minCalls > 0 or undefined
+          let filteredPhones = Array.from(uniquePhones)
+
+          if (omitCallbacks) {
+            filteredPhones = filteredPhones.filter(phone => !callbacksNumbers.includes(phone))
+          }
+
+          if (phonesToExclude.size > 0) {
+            filteredPhones = filteredPhones.filter(phone => !phonesToExclude.has(phone))
+          }
+
+          if (typeof minCalls === 'number' && minCalls > 0) {
+            filteredPhones = filteredPhones.filter(phone => (counts.get(phone) || 0) === minCalls)
+          }
+
+          // 5) Fetch lead info for these phone numbers from leads table
+          const { data: leadsData } = await supabase
+            .from('leads')
+            .select('phone_number, business_name, timezone')
+            .in('phone_number', filteredPhones.length > 0 ? filteredPhones : ['__NO_MATCH__'])
+          
+          const leadsMap = new Map<string, any>()
+          if (Array.isArray(leadsData)) {
+            for (const lead of leadsData) {
+              leadsMap.set(normalizePhone(lead.phone_number), lead)
+            }
+          }
+
+          // 6) Build final lead rows with call data
+          leadRows = filteredPhones.map(phone => {
+            const leadInfo = leadsMap.get(phone)
+            return {
+              phone_number: leadInfo?.phone_number || phone,
+              business_name: leadInfo?.business_name || '',
+              address: '',
+              customer_phone: leadInfo?.phone_number || phone,
+              timezone: leadInfo?.timezone || '',
+              calls_count: counts.get(phone) || 0,
+              last_call_date: lastCallDates.get(phone)
+            }
+          })
       }
-
-      if (phonesToExclude.size > 0) {
-        filteredPhones = filteredPhones.filter(phone => !phonesToExclude.has(phone))
-      }
-
-      if (typeof minCalls === 'number' && minCalls > 0) {
-        filteredPhones = filteredPhones.filter(phone => (counts.get(phone) || 0) === minCalls)
-      }
-
-      // 5) Fetch lead info for these phone numbers from leads table
-      const { data: leadsData } = await supabase
-        .from('leads')
-        .select('phone_number, business_name, timezone')
-        .in('phone_number', filteredPhones.length > 0 ? filteredPhones : ['__NO_MATCH__'])
-      
-      const leadsMap = new Map<string, any>()
-      if (Array.isArray(leadsData)) {
-        for (const lead of leadsData) {
-          leadsMap.set(normalizePhone(lead.phone_number), lead)
-        }
-      }
-
-      // 6) Build final lead rows with call data
-      const leadRows: LeadRow[] = filteredPhones.map(phone => {
-        const leadInfo = leadsMap.get(phone)
-        return {
-          phone_number: leadInfo?.phone_number || phone,
-          business_name: leadInfo?.business_name || '',
-          address: '',
-          customer_phone: leadInfo?.phone_number || phone,
-          timezone: leadInfo?.timezone || '',
-          calls_count: counts.get(phone) || 0,
-          last_call_date: lastCallDates.get(phone)
-        }
-      })
 
       // Ordenar por fecha de última llamada (más reciente primero)
       leadRows.sort((a, b) => {
@@ -248,40 +296,76 @@ export default function ExportSection() {
         phonesToExclude = new Set(nums)
       }
 
-      // 4) Filter phones
-      let filteredPhones = Array.from(uniquePhones)
-      if (omitCallbacks) filteredPhones = filteredPhones.filter(phone => !callbacksNumbers.includes(phone))
-      if (phonesToExclude.size > 0) filteredPhones = filteredPhones.filter(phone => !phonesToExclude.has(phone))
-      if (typeof minCalls === 'number' && minCalls > 0) filteredPhones = filteredPhones.filter(phone => (counts.get(phone) || 0) === minCalls)
+      let csvRows: any[] = []
 
-      // 5) Fetch lead info
-      const { data: leadsData } = await supabase
-        .from('leads')
-        .select('phone_number, business_name, timezone')
-        .in('phone_number', filteredPhones.length > 0 ? filteredPhones : ['__NO_MATCH__'])
-      
-      const leadsMap = new Map<string, any>()
-      if (Array.isArray(leadsData)) {
-        for (const lead of leadsData) {
-          leadsMap.set(normalizePhone(lead.phone_number), lead)
-        }
+      if (minCalls === 0) {
+          // Fetch all leads to find those with 0 calls
+          let allLeads: any[] = []
+          let hasMore = true
+          let p = 0
+          const pageSize = 1000
+          while (hasMore) {
+            const { data, error } = await supabase
+              .from('leads')
+              .select('phone_number, business_name, timezone')
+              .range(p * pageSize, (p + 1) * pageSize - 1)
+            
+            if (error || !data || data.length === 0) {
+              hasMore = false
+            } else {
+              allLeads = allLeads.concat(data)
+              if (data.length < pageSize) hasMore = false
+              p++
+            }
+            if (p > 100) break // Safety break
+          }
+
+          csvRows = allLeads
+            .filter(l => {
+                const phone = normalizePhone(l.phone_number)
+                if (!phone) return false
+                if (uniquePhones.has(phone)) return false // Has calls
+                if (omitCallbacks && callbacksNumbers.includes(phone)) return false
+                return true
+            })
+            .map(l => ({
+                'phone number': l.phone_number,
+                business_name: l.business_name || '',
+                customer_phone: l.phone_number,
+                timezone: l.timezone || ''
+            }))
+
+      } else {
+          // 4) Filter phones
+          let filteredPhones = Array.from(uniquePhones)
+          if (omitCallbacks) filteredPhones = filteredPhones.filter(phone => !callbacksNumbers.includes(phone))
+          if (phonesToExclude.size > 0) filteredPhones = filteredPhones.filter(phone => !phonesToExclude.has(phone))
+          if (typeof minCalls === 'number' && minCalls > 0) filteredPhones = filteredPhones.filter(phone => (counts.get(phone) || 0) === minCalls)
+
+          // 5) Fetch lead info
+          const { data: leadsData } = await supabase
+            .from('leads')
+            .select('phone_number, business_name, timezone')
+            .in('phone_number', filteredPhones.length > 0 ? filteredPhones : ['__NO_MATCH__'])
+          
+          const leadsMap = new Map<string, any>()
+          if (Array.isArray(leadsData)) {
+            for (const lead of leadsData) {
+              leadsMap.set(normalizePhone(lead.phone_number), lead)
+            }
+          }
+
+          // Build CSV rows with the exact columns required by the user.
+          csvRows = filteredPhones.map(phone => {
+            const leadInfo = leadsMap.get(phone)
+            return {
+              'phone number': leadInfo?.phone_number || phone,
+              business_name: leadInfo?.business_name || '',
+              customer_phone: leadInfo?.phone_number || phone,
+              timezone: leadInfo?.timezone || ''
+            }
+          })
       }
-
-      // Build CSV rows with the exact columns required by the user.
-      // Columns (in this order):
-      // - "phone number"  (value from leads.phone_number)
-      // - business_name     (from leads.business_name)
-      // - customer_phone    (same value as phone number)
-      // - timezone          (from leads.timezone)
-      const csvRows = filteredPhones.map(phone => {
-        const leadInfo = leadsMap.get(phone)
-        return {
-          'phone number': leadInfo?.phone_number || phone,
-          business_name: leadInfo?.business_name || '',
-          customer_phone: leadInfo?.phone_number || phone,
-          timezone: leadInfo?.timezone || ''
-        }
-      })
 
       downloadCsv(`leads_export_${new Date().toISOString()}.csv`, csvRows)
     } catch (err) {
