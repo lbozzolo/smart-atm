@@ -113,27 +113,30 @@ export default function ImportSection() {
         }
       })
       const uniqueData = Array.from(uniqueDataMap.values())
-      // Eliminar duplicados con respecto a la base de datos
-      const phoneNumbers = uniqueData.map(d => d.phone_number).filter(Boolean)
-      const { data: existentes } = await supabase
+      
+      // Intentar insertar todos los registros únicos del archivo.
+      // Usamos upsert con ignoreDuplicates: true para que la BD descarte silenciosamente los que ya existen.
+      // .select() nos devolverá solo los registros que realmente se insertaron.
+      const { data: insertedData, error } = await supabase
         .from('leads')
-        .select('phone_number')
-        .in('phone_number', phoneNumbers)
-      const existentesSet = new Set((existentes || []).map((e: any) => e.phone_number))
-      const nuevos = uniqueData.filter(d => !existentesSet.has(d.phone_number))
-      const omitidos = uniqueData.filter(d => existentesSet.has(d.phone_number))
-      if (nuevos.length === 0) {
-        setResult({ type: 'info', message: `No hay registros nuevos para importar. Se omitieron ${omitidos.length} duplicados.` })
-        setImporting(false)
-        return
-      }
-      const { error } = await supabase
-        .from('leads')
-        .insert(nuevos)
+        .upsert(uniqueData, { onConflict: 'phone_number', ignoreDuplicates: true })
+        .select()
+
       if (error) {
-        setResult({ type: 'error', message: `Error al importar: ${error.message}. Se omitieron ${omitidos.length} duplicados.` })
+        setResult({ type: 'error', message: `Error al importar: ${error.message}` })
       } else {
-        setResult({ type: 'success', message: `Importación exitosa: ${nuevos.length} registros nuevos agregados. Se omitieron ${omitidos.length} duplicados.` })
+        const insertedCount = insertedData ? insertedData.length : 0
+        const totalProcessed = uniqueData.length
+        const duplicatesInDb = totalProcessed - insertedCount
+        const duplicatesInFile = data.length - uniqueData.length
+        
+        const totalOmitted = duplicatesInDb + duplicatesInFile
+
+        if (insertedCount === 0) {
+           setResult({ type: 'info', message: `No hay registros nuevos. Se procesaron ${data.length} filas y todas eran duplicadas.` })
+        } else {
+           setResult({ type: 'success', message: `Importación exitosa: ${insertedCount} registros nuevos agregados. Se omitieron ${totalOmitted} duplicados (${duplicatesInFile} en archivo, ${duplicatesInDb} en base de datos).` })
+        }
       }
     } catch (err: any) {
       setResult({ type: 'error', message: 'Error al procesar el archivo: ' + err.message })
