@@ -44,6 +44,7 @@ function downloadCsv(filename: string, rows: any[]) {
 export default function ExportSection() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [loteDate, setLoteDate] = useState('')
   // dispositions to omit from the query (user can select multiple)
   // Use the central dispositions list from dispositions.ts as single source of truth
   const [omitDispositions, setOmitDispositions] = useState<string[]>([])
@@ -75,6 +76,7 @@ export default function ExportSection() {
   const handlePreview = async (newPage = 1) => {
     setLoading(true)
     try {
+      console.log('handlePreview start', { loteDate, minCalls, omitCallbacks, newPage })
       // 1) Fetch ALL calls (no limit initially, or apply date filter directly to reduce dataset)
       // Order by created_at DESC to get most recent calls first
       let callsQuery = supabase
@@ -141,11 +143,18 @@ export default function ExportSection() {
           let hasMore = true
           let p = 0
           const pageSize = 1000
+          const startDate = loteDate ? new Date(`${loteDate}T00:00:00Z`) : null
+          const endDate = startDate ? new Date(startDate) : null
+          if (endDate) endDate.setUTCDate(endDate.getUTCDate() + 1)
           while (hasMore) {
-            const { data, error } = await supabase
+            let q = supabase
               .from('leads')
-              .select('phone_number, business_name, timezone')
-              .range(p * pageSize, (p + 1) * pageSize - 1)
+              .select('phone_number, business_name, timezone, created_at')
+            if (startDate && endDate) {
+              console.log('handlePreview lote filter (minCalls=0)', { loteDate, start: startDate.toISOString(), end: endDate.toISOString() })
+              q = q.gte('created_at', startDate.toISOString()).lt('created_at', endDate.toISOString())
+            }
+            const { data, error } = await q.range(p * pageSize, (p + 1) * pageSize - 1)
             
             if (error || !data || data.length === 0) {
               hasMore = false
@@ -165,7 +174,6 @@ export default function ExportSection() {
                 if (!phone) return false
                 if (uniquePhones.has(phone)) return false // Has calls
                 if (omitCallbacks && callbacksNumbers.includes(phone)) return false
-                // omitDispositions is irrelevant for 0 calls
                 return true
             })
             .map(l => ({
@@ -179,47 +187,96 @@ export default function ExportSection() {
             }))
 
       } else {
-          // Existing logic for minCalls > 0 or undefined
-          let filteredPhones = Array.from(uniquePhones)
+          const includeAllLeadsForLote = minCalls === '' && Boolean(loteDate)
+          if (includeAllLeadsForLote) {
+            const startDate = new Date(`${loteDate}T00:00:00Z`)
+            const endDate = new Date(startDate)
+            endDate.setUTCDate(endDate.getUTCDate() + 1)
+            console.log('handlePreview lote filter (all leads for lote)', { loteDate, start: startDate.toISOString(), end: endDate.toISOString() })
+            const { data: leadsData } = await supabase
+              .from('leads')
+              .select('phone_number, business_name, timezone, created_at')
+              .gte('created_at', startDate.toISOString())
+              .lt('created_at', endDate.toISOString())
 
-          if (omitCallbacks) {
-            filteredPhones = filteredPhones.filter(phone => !callbacksNumbers.includes(phone))
-          }
+            const leadsList = Array.isArray(leadsData) ? leadsData : []
+            leadRows = leadsList
+              .filter(lead => {
+                const normalized = normalizePhone(lead.phone_number)
+                if (!normalized) return false
+                if (omitCallbacks && callbacksNumbers.includes(normalized)) return false
+                if (phonesToExclude.size > 0 && phonesToExclude.has(normalized)) return false
+                return true
+              })
+              .map(lead => {
+                const normalized = normalizePhone(lead.phone_number)
+                return {
+                  phone_number: lead.phone_number,
+                  business_name: lead.business_name || '',
+                  address: '',
+                  customer_phone: lead.phone_number,
+                  timezone: lead.timezone || '',
+                  calls_count: counts.get(normalized) || 0,
+                  last_call_date: lastCallDates.get(normalized) || undefined
+                }
+              })
+          } else {
+            // Existing logic for minCalls > 0 or when no lote filter is specified
+            let filteredPhones = Array.from(uniquePhones)
 
-          if (phonesToExclude.size > 0) {
-            filteredPhones = filteredPhones.filter(phone => !phonesToExclude.has(phone))
-          }
-
-          if (typeof minCalls === 'number' && minCalls > 0) {
-            filteredPhones = filteredPhones.filter(phone => (counts.get(phone) || 0) === minCalls)
-          }
-
-          // 5) Fetch lead info for these phone numbers from leads table
-          const { data: leadsData } = await supabase
-            .from('leads')
-            .select('phone_number, business_name, timezone')
-            .in('phone_number', filteredPhones.length > 0 ? filteredPhones : ['__NO_MATCH__'])
-          
-          const leadsMap = new Map<string, any>()
-          if (Array.isArray(leadsData)) {
-            for (const lead of leadsData) {
-              leadsMap.set(normalizePhone(lead.phone_number), lead)
+            if (omitCallbacks) {
+              filteredPhones = filteredPhones.filter(phone => !callbacksNumbers.includes(phone))
             }
-          }
 
-          // 6) Build final lead rows with call data
-          leadRows = filteredPhones.map(phone => {
-            const leadInfo = leadsMap.get(phone)
-            return {
-              phone_number: leadInfo?.phone_number || phone,
-              business_name: leadInfo?.business_name || '',
-              address: '',
-              customer_phone: leadInfo?.phone_number || phone,
-              timezone: leadInfo?.timezone || '',
-              calls_count: counts.get(phone) || 0,
-              last_call_date: lastCallDates.get(phone)
+            if (phonesToExclude.size > 0) {
+              filteredPhones = filteredPhones.filter(phone => !phonesToExclude.has(phone))
             }
-          })
+
+            if (typeof minCalls === 'number' && minCalls > 0) {
+              filteredPhones = filteredPhones.filter(phone => (counts.get(phone) || 0) === minCalls)
+            }
+
+            // 5) Fetch lead info for these phone numbers from leads table (include created_at)
+            let leadsQuery = supabase
+              .from('leads')
+              .select('phone_number, business_name, timezone, created_at')
+              .in('phone_number', filteredPhones.length > 0 ? filteredPhones : ['__NO_MATCH__'])
+            if (loteDate) {
+              const startDate = new Date(`${loteDate}T00:00:00Z`)
+              const endDate = new Date(startDate)
+              endDate.setUTCDate(endDate.getUTCDate() + 1)
+              console.log('handlePreview lote filter (minCalls>0)', { loteDate, start: startDate.toISOString(), end: endDate.toISOString() })
+              leadsQuery = leadsQuery
+                .gte('created_at', startDate.toISOString())
+                .lt('created_at', endDate.toISOString())
+            }
+            const { data: leadsData } = await leadsQuery
+            
+            const leadsMap = new Map<string, any>()
+            if (Array.isArray(leadsData)) {
+              for (const lead of leadsData) {
+                leadsMap.set(normalizePhone(lead.phone_number), lead)
+              }
+            }
+
+            if (loteDate) {
+              const leadSet = new Set<string>((leadsData || []).map((l: any) => normalizePhone(l.phone_number)))
+              filteredPhones = filteredPhones.filter(p => leadSet.has(p))
+            }
+
+            leadRows = filteredPhones.map(phone => {
+              const leadInfo = leadsMap.get(phone)
+              return {
+                phone_number: leadInfo?.phone_number || phone,
+                business_name: leadInfo?.business_name || '',
+                address: '',
+                customer_phone: leadInfo?.phone_number || phone,
+                timezone: leadInfo?.timezone || '',
+                calls_count: counts.get(phone) || 0,
+                last_call_date: lastCallDates.get(phone)
+              }
+            })
+          }
       }
 
       // Ordenar por fecha de última llamada (más reciente primero)
@@ -231,6 +288,7 @@ export default function ExportSection() {
       })
 
       const totalResults = leadRows.length
+      console.log('handlePreview result', { totalResults })
       setTotal(totalResults)
       setTotalPages(Math.ceil(totalResults / limit) || 1)
       setPage(newPage)
@@ -252,6 +310,7 @@ export default function ExportSection() {
   const handleExport = async () => {
     setLoading(true)
     try {
+      console.log('handleExport start', { loteDate, minCalls, omitCallbacks })
       // 1) Fetch calls with date filter applied directly
       let callsQuery = supabase
         .from('calls')
@@ -299,16 +358,24 @@ export default function ExportSection() {
       let csvRows: any[] = []
 
       if (minCalls === 0) {
-          // Fetch all leads to find those with 0 calls
+          // Fetch all leads to find those with 0 calls (respect lote filter if present)
           let allLeads: any[] = []
           let hasMore = true
           let p = 0
           const pageSize = 1000
+          const startDate = loteDate ? new Date(`${loteDate}T00:00:00Z`) : null
+          const endDate = startDate ? new Date(startDate) : null
+          if (endDate) endDate.setUTCDate(endDate.getUTCDate() + 1)
           while (hasMore) {
-            const { data, error } = await supabase
+            let q = supabase
               .from('leads')
-              .select('phone_number, business_name, timezone')
-              .range(p * pageSize, (p + 1) * pageSize - 1)
+              .select('phone_number, business_name, timezone, created_at')
+            if (startDate && endDate) {
+              q = q
+                .gte('created_at', startDate.toISOString())
+                .lt('created_at', endDate.toISOString())
+            }
+            const { data, error } = await q.range(p * pageSize, (p + 1) * pageSize - 1)
             
             if (error || !data || data.length === 0) {
               hasMore = false
@@ -336,37 +403,87 @@ export default function ExportSection() {
             }))
 
       } else {
-          // 4) Filter phones
-          let filteredPhones = Array.from(uniquePhones)
-          if (omitCallbacks) filteredPhones = filteredPhones.filter(phone => !callbacksNumbers.includes(phone))
-          if (phonesToExclude.size > 0) filteredPhones = filteredPhones.filter(phone => !phonesToExclude.has(phone))
-          if (typeof minCalls === 'number' && minCalls > 0) filteredPhones = filteredPhones.filter(phone => (counts.get(phone) || 0) === minCalls)
+          const includeAllLeadsForLote = minCalls === '' && Boolean(loteDate)
+          if (includeAllLeadsForLote) {
+            const startDate = new Date(`${loteDate}T00:00:00Z`)
+            const endDate = new Date(startDate)
+            endDate.setUTCDate(endDate.getUTCDate() + 1)
+            console.log('handleExport lote filter (all leads for lote)', { loteDate, start: startDate.toISOString(), end: endDate.toISOString() })
+            const { data: leadsData } = await supabase
+              .from('leads')
+              .select('phone_number, business_name, timezone, created_at')
+              .gte('created_at', startDate.toISOString())
+              .lt('created_at', endDate.toISOString())
 
-          // 5) Fetch lead info
-          const { data: leadsData } = await supabase
-            .from('leads')
-            .select('phone_number, business_name, timezone')
-            .in('phone_number', filteredPhones.length > 0 ? filteredPhones : ['__NO_MATCH__'])
-          
-          const leadsMap = new Map<string, any>()
-          if (Array.isArray(leadsData)) {
-            for (const lead of leadsData) {
-              leadsMap.set(normalizePhone(lead.phone_number), lead)
+            const leadsList = Array.isArray(leadsData) ? leadsData : []
+            csvRows = leadsList
+              .filter(lead => {
+                const normalized = normalizePhone(lead.phone_number)
+                if (!normalized) return false
+                if (omitCallbacks && callbacksNumbers.includes(normalized)) return false
+                if (phonesToExclude.size > 0 && phonesToExclude.has(normalized)) return false
+                if (typeof minCalls === 'number' && minCalls > 0) {
+                  return (counts.get(normalized) || 0) === minCalls
+                }
+                return true
+              })
+              .map(lead => {
+                const normalized = normalizePhone(lead.phone_number)
+                return {
+                  'phone number': lead.phone_number,
+                  business_name: lead.business_name || '',
+                  customer_phone: lead.phone_number,
+                  timezone: lead.timezone || ''
+                }
+              })
+          } else {
+            // 4) Filter phones starting from calls
+            let filteredPhones = Array.from(uniquePhones)
+            if (omitCallbacks) filteredPhones = filteredPhones.filter(phone => !callbacksNumbers.includes(phone))
+            if (phonesToExclude.size > 0) filteredPhones = filteredPhones.filter(phone => !phonesToExclude.has(phone))
+            if (typeof minCalls === 'number' && minCalls > 0) filteredPhones = filteredPhones.filter(phone => (counts.get(phone) || 0) === minCalls)
+
+            // 5) Fetch lead info
+            let leadsQuery = supabase
+              .from('leads')
+              .select('phone_number, business_name, timezone, created_at')
+              .in('phone_number', filteredPhones.length > 0 ? filteredPhones : ['__NO_MATCH__'])
+            if (loteDate) {
+              const startDate = new Date(`${loteDate}T00:00:00Z`)
+              const endDate = new Date(startDate)
+              endDate.setUTCDate(endDate.getUTCDate() + 1)
+              console.log('handleExport lote filter (minCalls>0)', { loteDate, start: startDate.toISOString(), end: endDate.toISOString() })
+              leadsQuery = leadsQuery
+                .gte('created_at', startDate.toISOString())
+                .lt('created_at', endDate.toISOString())
             }
+            const { data: leadsData } = await leadsQuery
+            
+            const leadsMap = new Map<string, any>()
+            if (Array.isArray(leadsData)) {
+              for (const lead of leadsData) {
+                leadsMap.set(normalizePhone(lead.phone_number), lead)
+              }
+            }
+
+            if (loteDate) {
+              const leadSet = new Set<string>((leadsData || []).map((l: any) => normalizePhone(l.phone_number)))
+              filteredPhones = filteredPhones.filter(p => leadSet.has(p))
+            }
+
+            csvRows = filteredPhones.map(phone => {
+              const leadInfo = leadsMap.get(phone)
+              return {
+                'phone number': leadInfo?.phone_number || phone,
+                business_name: leadInfo?.business_name || '',
+                customer_phone: leadInfo?.phone_number || phone,
+                timezone: leadInfo?.timezone || ''
+              }
+            })
           }
-
-          // Build CSV rows with the exact columns required by the user.
-          csvRows = filteredPhones.map(phone => {
-            const leadInfo = leadsMap.get(phone)
-            return {
-              'phone number': leadInfo?.phone_number || phone,
-              business_name: leadInfo?.business_name || '',
-              customer_phone: leadInfo?.phone_number || phone,
-              timezone: leadInfo?.timezone || ''
-            }
-          })
       }
 
+      console.log('handleExport result', { rows: csvRows.length, loteDate })
       downloadCsv(`leads_export_${new Date().toISOString()}.csv`, csvRows)
     } catch (err) {
       console.error('Error exporting CSV:', err)
@@ -385,12 +502,18 @@ export default function ExportSection() {
         <h3 className="text-lg font-semibold mb-4">Filtros</h3>
         <div className="space-y-3">
           <div>
-            <label className="block text-xs text-theme-text-muted">Desde</label>
+            <label className="block text-xs text-theme-text-muted">Desde (fecha de llamada)</label>
             <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full px-3 py-2 border rounded" />
+            <p className="mt-1 text-[11px] text-theme-text-muted">Limita las llamadas incluidas desde esta fecha.</p>
           </div>
           <div>
-            <label className="block text-xs text-theme-text-muted">Hasta</label>
+            <label className="block text-xs text-theme-text-muted">Hasta (fecha de llamada)</label>
             <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full px-3 py-2 border rounded" />
+            <p className="mt-1 text-[11px] text-theme-text-muted">Último día de llamadas a considerar.</p>
+          </div>
+          <div>
+            <label className="block text-xs text-theme-text-muted">Lote (fecha de creación del lead)</label>
+            <input type="date" value={loteDate} onChange={(e) => setLoteDate(e.target.value)} className="w-full px-3 py-2 border rounded" />
           </div>
           <div>
             <label className="block text-xs text-theme-text-muted">Omitir dispositions</label>

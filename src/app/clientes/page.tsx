@@ -85,9 +85,9 @@ export default function ClientesPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   type Lead = {
   phone_number: string
-  owner_name?: string
   business_name?: string
   address?: string
+  created_at?: string
   last_call_date: string | null
   callbacks_count: number
   }
@@ -96,18 +96,60 @@ export default function ClientesPage() {
   const [search, setSearch] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
-  const [sortBy, setSortBy] = useState<'business_name' | 'owner_name' | 'last_call_date'>('business_name')
+  const [sortBy, setSortBy] = useState<'business_name' | 'last_call_date'>('business_name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
-  const [dispositionFilter, setDispositionFilter] = useState<string>('all')
+  // remove disposition filter
   const [onlyWithCallbacks, setOnlyWithCallbacks] = useState(false)
+  const [loteDate, setLoteDate] = useState<string>('')
   const ITEMS_PER_PAGE = 25
 
+  // Helper para generar paginación compacta con elipsis
+  const getPaginationItems = (
+    current: number,
+    totalPages: number,
+    siblingCount = 1,
+    boundaryCount = 1
+  ): Array<number | 'ellipsis'> => {
+    const items: Array<number | 'ellipsis'> = []
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) items.push(i)
+      return items
+    }
+
+    const startPages = Array.from({ length: Math.min(boundaryCount, totalPages) }, (_, i) => i + 1)
+    const endPages = Array.from({ length: Math.min(boundaryCount, totalPages) }, (_, i) => totalPages - i).reverse()
+    const leftSibling = Math.max(current - siblingCount, boundaryCount + 2)
+    const rightSibling = Math.min(current + siblingCount, totalPages - boundaryCount - 1)
+
+    // Inicio
+    items.push(...startPages)
+    if (leftSibling > boundaryCount + 2) items.push('ellipsis')
+    else if (boundaryCount + 1 < leftSibling) items.push(boundaryCount + 1)
+
+    // Zona central
+    for (let i = leftSibling; i <= rightSibling; i++) items.push(i)
+
+    // Fin
+    if (rightSibling < totalPages - boundaryCount - 1) items.push('ellipsis')
+    else if (rightSibling < totalPages - boundaryCount) items.push(totalPages - boundaryCount)
+    items.push(...endPages)
+
+    // Devolver únicos y ordenados (por seguridad)
+    const seen = new Set<string>()
+    return items.filter(it => {
+      const key = typeof it === 'number' ? `n${it}` : `e${seen.size}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }
   useEffect(() => {
     const fetchLeads = async () => {
       setLoading(true)
+      console.log('fetchLeads start', { loteDate, search, currentPage, onlyWithCallbacks })
       let query = supabase
         .from('leads')
-        .select('phone_number, owner_name, business_name, address', { count: 'exact' })
+        .select('phone_number, business_name, address, created_at', { count: 'exact' })
       // Si el usuario quiere sólo leads con callbacks, obtener los phone_numbers asociados server-side
       if (onlyWithCallbacks) {
         // Obtener directamente los to_number desde callbacks y filtrar leads por phone_number
@@ -125,26 +167,58 @@ export default function ClientesPage() {
         query = query.in('phone_number', phoneNumbersWithCallbacks)
       }
       if (search.trim()) {
-        query = query.or(`phone_number.ilike.%${search}%,owner_name.ilike.%${search}%,business_name.ilike.%${search}%`)
+        query = query.or(`phone_number.ilike.%${search}%,business_name.ilike.%${search}%`)
+      }
+      // Filtro por lote usando rango UTC del día
+      if (loteDate) {
+        const startDate = new Date(`${loteDate}T00:00:00Z`)
+        const endDate = new Date(startDate)
+        endDate.setUTCDate(endDate.getUTCDate() + 1)
+        const startISO = startDate.toISOString()
+        const endISO = endDate.toISOString()
+        console.log('Filtro lote clientes', { loteDate, startISO, endISO })
+        query = query.gte('created_at', startISO).lt('created_at', endISO)
       }
       const from = (currentPage - 1) * ITEMS_PER_PAGE
       const to = from + ITEMS_PER_PAGE - 1
       query = query.range(from, to)
       const { data, error, count } = await query
+      console.log('fetchLeads response', { loteDate, error, count, rows: data?.length })
+      // Fallback: si algunos rows no traen created_at, reconsultar sólo esos phone_numbers
+      let rows = data || []
+      const missingCreatedPhones = rows.filter((r: any) => !r?.created_at).map((r: any) => r.phone_number)
+      if (missingCreatedPhones.length > 0) {
+        const { data: createdRows } = await supabase
+          .from('leads')
+          .select('phone_number, created_at')
+          .in('phone_number', missingCreatedPhones)
+        const createdMap = new Map((createdRows || []).map((r: any) => [r.phone_number, r.created_at]))
+        rows = rows.map((r: any) => ({
+          ...r,
+          created_at: r.created_at || createdMap.get(r.phone_number) || null,
+        }))
+      }
       // Construir array tipado de leads incluyendo la fecha de última llamada
-      const phoneNumbers = (data || []).map((l: any) => l.phone_number)
+      const phoneNumbers = rows.map((l: any) => l.phone_number)
       const lastDates = await getLastCallDates(phoneNumbers)
       const callbackCounts = await getCallbackCounts(phoneNumbers)
-      const leadsWithDate: Lead[] = (data || []).map((lead: any) => ({
+      const leadsWithDate: Lead[] = rows.map((lead: any) => ({
         phone_number: lead.phone_number,
-        owner_name: lead.owner_name,
         business_name: lead.business_name,
         address: lead.address,
+        created_at: lead.created_at || null,
         last_call_date: lastDates[lead.phone_number] ?? null,
         callbacks_count: callbackCounts[lead.phone_number] ?? 0
       }))
       // Aplicar filtro local si el usuario quiere ver sólo leads con callbacks
       let visibleLeads = leadsWithDate
+      // Filtro local por lote: comparar prefijo ISO yyyy-mm-dd
+      if (loteDate) {
+        visibleLeads = visibleLeads.filter(l => {
+          const ca = l.created_at
+          return typeof ca === 'string' && ca.slice(0, 10) === loteDate
+        })
+      }
       if (onlyWithCallbacks) {
         visibleLeads = leadsWithDate.filter(l => (l.callbacks_count ?? 0) > 0)
       }
@@ -173,14 +247,14 @@ export default function ClientesPage() {
       setLoading(false)
     }
     fetchLeads()
-  }, [currentPage, search, sortBy, sortOrder, onlyWithCallbacks])
+  }, [currentPage, search, sortBy, sortOrder, onlyWithCallbacks, loteDate])
 
   // Filtrar leads por cualquier campo
   // Ya no se filtra en frontend, solo se muestra lo que trae la consulta
   return (
     <div className="min-h-screen bg-theme-surface">
       <Sidebar activeItem="clientes" />
-      <Header sidebarCollapsed={sidebarCollapsed} currentPage="Clientes" pageTitle="Tabla de Clientes" />
+      <Header sidebarCollapsed={sidebarCollapsed} currentPage="Clientes" pageTitle="Clientes" />
       <main className={`
         pt-20 pb-8 px-6 transition-all duration-300
         ${sidebarCollapsed ? 'ml-20' : 'ml-64'}
@@ -188,62 +262,42 @@ export default function ClientesPage() {
         <div className="bg-theme-surface rounded-theme-lg border border-theme-border shadow-sm">
           <div className="p-6 border-b border-theme-border flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center space-x-4">
-              <h2 className="text-xl font-bold text-theme-text-primary">Tabla de Clientes</h2>
+              <h2 className="text-xl font-bold text-theme-text-primary">Clientes</h2>
               <span className="px-3 py-1 bg-theme-primary/10 text-theme-primary rounded-full text-sm font-medium">
                 {totalItems.toLocaleString()} resultados
               </span>
             </div>
-            <div className="flex flex-col md:flex-row gap-2 items-center">
-              <button
-                className="px-3 py-2 border border-theme-border rounded-theme text-sm bg-theme-surface text-theme-primary hover:bg-theme-primary/10"
-                onClick={() => {
-                  setSearch("");
-                  setSortBy("business_name");
-                  setSortOrder("asc");
-                  setDispositionFilter("all");
-                  setCurrentPage(1);
-                }}
-                type="button"
-              >
-                Limpiar filtros
-              </button>
+            {/* Filtros en una sola fila: búsqueda, lote y callbacks */}
+            <div className="flex flex-col md:flex-row gap-2 items-center w-full md:w-auto">
               <input
                 type="text"
                 className="px-3 py-2 border border-theme-border rounded-theme text-sm w-64 bg-theme-surface focus:outline-none focus:ring-2 focus:ring-theme-primary"
-                placeholder="Buscar por teléfono, propietario o empresa..."
+                placeholder="Buscar por teléfono o empresa..."
                 value={search}
                 onChange={e => {
                   setSearch(e.target.value)
                   setCurrentPage(1)
                 }}
               />
-              <select
-                className="px-3 py-2 border border-theme-border rounded-theme text-sm bg-theme-surface focus:outline-none"
-                value={sortBy}
-                onChange={e => setSortBy(e.target.value as any)}
-              >
-                <option value="business_name">Empresa</option>
-                <option value="owner_name">Propietario</option>
-                <option value="last_call_date">Fecha última llamada</option>
-              </select>
-              <select
-                className="px-3 py-2 border border-theme-border rounded-theme text-sm bg-theme-surface focus:outline-none"
-                value={sortOrder}
-                onChange={e => setSortOrder(e.target.value as any)}
-              >
-                <option value="asc">Ascendente</option>
-                <option value="desc">Descendente</option>
-              </select>
-              <select
-                className="px-3 py-2 border border-theme-border rounded-theme text-sm bg-theme-surface focus:outline-none"
-                value={dispositionFilter}
-                onChange={e => { setDispositionFilter(e.target.value); setCurrentPage(1); }}
-              >
-                <option value="all">Todos los estados</option>
-                <option value="Exitosa">Exitosa</option>
-                <option value="Fallida">Fallida</option>
-                <option value="Sin disposition">Sin disposition</option>
-              </select>
+              {/* Filtro por lote (fecha de created_at) */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-theme-text-primary">Lote</label>
+                <input
+                  type="date"
+                  className="px-3 py-2 border border-theme-border rounded-theme text-sm bg-theme-surface focus:outline-none"
+                  value={loteDate}
+                  onChange={e => { setLoteDate(e.target.value); setCurrentPage(1); }}
+                />
+                {loteDate && (
+                  <button
+                    type="button"
+                    className="px-2 py-1 border border-theme-border rounded-theme text-xs text-theme-text-primary hover:bg-theme-surface"
+                    onClick={() => { setLoteDate(''); setCurrentPage(1); }}
+                  >
+                    Limpiar
+                  </button>
+                )}
+              </div>
               <label className="inline-flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -272,7 +326,7 @@ export default function ClientesPage() {
                 <thead className="bg-theme-surface-hover sticky top-0 z-10">
                   <tr>
                     <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-32">Teléfono</th>
-                    <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-40">Propietario</th>
+                    <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-32">Lote</th>
                     <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-40">Empresa</th>
                     <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-56">Dirección</th>
                     <th className="px-4 py-4 text-left text-xs font-medium text-theme-text-muted uppercase tracking-wider w-40">Última llamada</th>
@@ -288,7 +342,9 @@ export default function ClientesPage() {
                         <div className="text-xs font-mono text-theme-text-muted break-words whitespace-normal">{lead.phone_number}</div>
                       </td>
                       <td className="px-2 py-1 align-top break-words">
-                        <div className="text-xs text-theme-text-primary break-words whitespace-normal">{lead.owner_name || 'N/A'}</div>
+                        <div className="text-xs text-theme-text-primary break-words whitespace-normal">
+                          {lead.created_at ? new Date(lead.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
+                        </div>
                       </td>
                       <td className="px-2 py-1 align-top break-words">
                         <div className="text-xs text-theme-text-primary break-words whitespace-normal">{lead.business_name || 'N/A'}</div>
@@ -343,16 +399,24 @@ export default function ClientesPage() {
                 >
                   Anterior
                 </button>
-                {/* Números de página */}
-                {Array.from({ length: Math.ceil(totalItems / ITEMS_PER_PAGE) }, (_, i) => i + 1).map(pageNum => (
-                  <button
-                    key={pageNum}
-                    onClick={() => setCurrentPage(pageNum)}
-                    className={`px-2 py-1 rounded-theme text-sm border border-theme-border hover:bg-theme-primary/10 transition-colors ${currentPage === pageNum ? 'bg-theme-primary text-white font-bold' : 'text-theme-text-primary'}`}
-                  >
-                    {pageNum}
-                  </button>
-                ))}
+                {/* Números de página compactos con elipsis */}
+                {(() => {
+                  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE)
+                  const items = getPaginationItems(currentPage, totalPages, 1, 1)
+                  return items.map((it, idx) =>
+                    it === 'ellipsis' ? (
+                      <span key={`ellipsis-${idx}`} className="px-2 py-1 text-sm text-theme-text-muted">…</span>
+                    ) : (
+                      <button
+                        key={`page-${it}`}
+                        onClick={() => setCurrentPage(it)}
+                        className={`px-2 py-1 rounded-theme text-sm border border-theme-border hover:bg-theme-primary/10 transition-colors ${currentPage === it ? 'bg-theme-primary text-white font-bold' : 'text-theme-text-primary'}`}
+                      >
+                        {it}
+                      </button>
+                    )
+                  )
+                })()}
                 <button
                   onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(totalItems / ITEMS_PER_PAGE)))}
                   disabled={currentPage === Math.ceil(totalItems / ITEMS_PER_PAGE)}

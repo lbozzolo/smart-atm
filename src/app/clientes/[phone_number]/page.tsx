@@ -32,7 +32,7 @@ export default function ClienteDetallePage() {
       // Obtener datos del cliente (solo los campos relevantes)
       const { data: clienteData } = await supabase
         .from('leads')
-        .select('phone_number, owner_name, business_name, location_type, email, timezone, address')
+        .select('phone_number, owner_name, business_name, location_type, email, timezone, address, created_at')
         .eq('phone_number', phone_number)
         .single()
       setCliente(clienteData)
@@ -189,6 +189,12 @@ export default function ClienteDetallePage() {
                           </div>
                         </div>
                         <div className="mt-3 grid grid-cols-1 gap-2">
+                          <div>
+                            <p className="text-sm text-theme-text-secondary">Creado</p>
+                            <p className="text-sm text-theme-text-primary">
+                              {cliente.created_at ? new Date(cliente.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/D'}
+                            </p>
+                          </div>
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="text-sm text-theme-text-secondary">Propietario</p>
