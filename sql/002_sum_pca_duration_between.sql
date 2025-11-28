@@ -24,49 +24,40 @@ RETURNS TABLE (
   month_start date,
   total_ms bigint
 ) LANGUAGE sql STABLE AS $$
-  WITH filtered AS (
-    SELECT *
-    FROM public.pca AS p
-    WHERE (p_start_timestamp IS NULL OR p.created_at >= p_start_timestamp)
-      AND (p_end_timestamp IS NULL OR p.created_at <= p_end_timestamp)
-  ),
-  meta AS (
+  WITH data_in_range AS (
     SELECT
-      DATE_TRUNC('month', MIN(created_at)) AS min_month,
-      DATE_TRUNC('month', MAX(created_at)) AS max_month
-    FROM filtered
+      DATE_TRUNC('month', created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date as month_date,
+      duration_ms
+    FROM public.pca
+    WHERE (p_start_timestamp IS NULL OR created_at >= p_start_timestamp)
+      AND (p_end_timestamp IS NULL OR created_at <= p_end_timestamp)
   ),
-  bounds AS (
+  monthly_sums AS (
     SELECT
-      CASE
-        WHEN (SELECT min_month FROM meta) IS NULL AND p_start_timestamp IS NULL THEN DATE_TRUNC('month', NOW())
-        WHEN (SELECT min_month FROM meta) IS NULL THEN DATE_TRUNC('month', p_start_timestamp)
-        WHEN p_start_timestamp IS NULL THEN (SELECT min_month FROM meta)
-        ELSE GREATEST(DATE_TRUNC('month', p_start_timestamp), (SELECT min_month FROM meta))
-      END AS series_start,
-      CASE
-        WHEN (SELECT max_month FROM meta) IS NULL AND p_end_timestamp IS NULL THEN DATE_TRUNC('month', NOW())
-        WHEN (SELECT max_month FROM meta) IS NULL THEN DATE_TRUNC('month', p_end_timestamp)
-        WHEN p_end_timestamp IS NULL THEN (SELECT max_month FROM meta)
-        ELSE LEAST(DATE_TRUNC('month', p_end_timestamp), (SELECT max_month FROM meta))
-      END AS series_end
+      month_date,
+      SUM(duration_ms)::bigint as total_ms
+    FROM data_in_range
+    GROUP BY month_date
   ),
-  months AS (
-    SELECT
-      generate_series(
-        (SELECT series_start FROM bounds),
-        (SELECT series_end FROM bounds),
-        '1 month'::interval
-      ) AS month_start
+  range_bounds AS (
+     SELECT
+        MIN(month_date) as first_month,
+        MAX(month_date) as last_month
+     FROM monthly_sums
+  ),
+  all_months AS (
+    SELECT generate_series(
+       (SELECT first_month FROM range_bounds),
+       (SELECT last_month FROM range_bounds),
+       '1 month'::interval
+    )::date as month_start
   )
   SELECT
-    months.month_start::date,
-    COALESCE(SUM(filtered.duration_ms), 0)::bigint AS total_ms
-  FROM months
-  LEFT JOIN filtered
-    ON DATE_TRUNC('month', filtered.created_at) = months.month_start
-  GROUP BY months.month_start
-  ORDER BY months.month_start DESC;
+    am.month_start,
+    COALESCE(ms.total_ms, 0)
+  FROM all_months am
+  LEFT JOIN monthly_sums ms ON am.month_start = ms.month_date
+  ORDER BY am.month_start DESC;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.get_pca_duration_monthly(timestamptz, timestamptz) TO anon;

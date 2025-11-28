@@ -179,7 +179,9 @@ function MinutesContent() {
 
       const monthly: MonthlyMinutes[] = monthlyRows.map((entry) => {
         const key = entry.month_start.slice(0, 7)
-        const monthDate = new Date(`${entry.month_start}T00:00:00Z`)
+        // Parse YYYY-MM-DD as local date to avoid timezone shifts (e.g. UTC midnight becoming previous day)
+        const [y, m, d] = entry.month_start.split('-').map(Number)
+        const monthDate = new Date(y, m - 1, d)
         const label = capitalize(monthFormatter.format(monthDate))
         return {
           key,
