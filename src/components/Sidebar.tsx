@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useAuth } from '@/components/ProtectedRoute'
+import { isMinutesAllowed } from '@/lib/minutesAccess'
 
 interface SidebarProps {
   activeItem?: string
@@ -9,6 +11,8 @@ interface SidebarProps {
 
 export default function Sidebar({ activeItem = 'calls' }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const { user } = useAuth()
+  const allowedToSeeMinutes = isMinutesAllowed(user?.email)
 
   const configItems = [
     {
@@ -39,7 +43,7 @@ export default function Sidebar({ activeItem = 'calls' }: SidebarProps) {
 
   const isConfigActive = configItems.some(item => item.id === activeItem)
 
-  const menuItems = [
+  const baseMenuItems = [
     {
       id: 'calls',
       name: 'Llamadas',
@@ -91,6 +95,17 @@ export default function Sidebar({ activeItem = 'calls' }: SidebarProps) {
       description: 'Ajustes del sistema'
     }
   ]
+
+  const menuItems = [...baseMenuItems]
+
+  if (allowedToSeeMinutes) {
+    configItems.push({
+      id: 'minutos',
+      name: 'Minutos consumidos',
+      href: '/minutos',
+      description: 'Uso real de minutos'
+    })
+  }
 
   return (
     <>
