@@ -231,7 +231,7 @@ function MinutesContent() {
 
     const fetchHistoricalTotal = async () => {
       try {
-        const { data, error } = await supabase.rpc<number>('sum_pca_duration_ms')
+        const { data, error } = await supabase.rpc('sum_pca_duration_ms')
         if (!isMounted) {
           return
         }
@@ -239,7 +239,7 @@ function MinutesContent() {
           console.error('Error loading historical minutes total', error)
           return
         }
-        setHistoricalTotalMs(data ?? 0)
+        setHistoricalTotalMs(typeof data === 'number' ? data : 0)
       } catch (rpcError) {
         if (isMounted) {
           console.error('Error loading historical minutes total', rpcError)
