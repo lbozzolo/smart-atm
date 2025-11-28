@@ -46,6 +46,26 @@ const toMinutes = (ms: number) => ms / 60000
 const toHours = (ms: number) => ms / 3600000
 const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1)
 
+const formatDateInput = (date: Date) => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+const getRecentMonths = (count = 12) => {
+  const months = []
+  const now = new Date()
+  for (let i = 0; i < count; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    months.push({
+      label: capitalize(monthFormatter.format(d)),
+      value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    })
+  }
+  return months
+}
+
 const buildUtcDate = (value: string, endOfDay = false) => {
   const base = new Date(`${value}T00:00:00`)
   if (Number.isNaN(base.getTime())) {
@@ -76,6 +96,50 @@ function MinutesContent() {
   const [appliedDateFrom, setAppliedDateFrom] = useState<string | null>(null)
   const [appliedDateTo, setAppliedDateTo] = useState<string | null>(null)
   const [historicalTotalMs, setHistoricalTotalMs] = useState<number | null>(null)
+
+  const applyPreset = (start: Date, end: Date) => {
+    const startStr = formatDateInput(start)
+    const endStr = formatDateInput(end)
+    setDateFrom(startStr)
+    setDateTo(endStr)
+    setAppliedDateFrom(startStr)
+    setAppliedDateTo(endStr)
+  }
+
+  const handlePresetToday = () => {
+    const now = new Date()
+    applyPreset(now, now)
+  }
+
+  const handlePresetLast7Days = () => {
+    const end = new Date()
+    const start = new Date()
+    start.setDate(end.getDate() - 6)
+    applyPreset(start, end)
+  }
+
+  const handlePresetThisMonth = () => {
+    const now = new Date()
+    const start = new Date(now.getFullYear(), now.getMonth(), 1)
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    applyPreset(start, end)
+  }
+
+  const handlePresetLastMonth = () => {
+    const now = new Date()
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const end = new Date(now.getFullYear(), now.getMonth(), 0)
+    applyPreset(start, end)
+  }
+
+  const handleMonthSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value
+    if (!val) return
+    const [year, month] = val.split('-').map(Number)
+    const start = new Date(year, month - 1, 1)
+    const end = new Date(year, month, 0)
+    applyPreset(start, end)
+  }
 
   const handleApplyFilters = () => {
     setAppliedDateFrom(dateFrom || null)
@@ -384,43 +448,84 @@ function MinutesContent() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 bg-theme-surface border border-theme-border rounded-theme p-4">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-theme-text-secondary">Desde:</span>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(event) => setDateFrom(event.target.value)}
-            className="px-3 py-2 bg-theme-background border border-theme-border rounded-lg text-sm text-theme-text-primary focus:outline-none focus:ring-2 focus:ring-theme-primary/50"
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-theme-text-secondary">Hasta:</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(event) => setDateTo(event.target.value)}
-            className="px-3 py-2 bg-theme-background border border-theme-border rounded-lg text-sm text-theme-text-primary focus:outline-none focus:ring-2 focus:ring-theme-primary/50"
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-4 bg-theme-surface border border-theme-border rounded-theme p-4">
+        <div className="flex flex-wrap items-center gap-2 pb-4 border-b border-theme-border">
+          <span className="text-sm font-medium text-theme-text-secondary mr-2">Filtros rápidos:</span>
           <button
-            onClick={handleApplyFilters}
-            className="px-4 py-2 text-sm font-medium text-white bg-theme-primary hover:bg-theme-primary/90 rounded-lg transition-colors shadow-sm"
+            onClick={handlePresetToday}
+            className="px-3 py-1.5 text-xs font-medium bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
           >
-            Aplicar filtros
+            Hoy
           </button>
+          <button
+            onClick={handlePresetLast7Days}
+            className="px-3 py-1.5 text-xs font-medium bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors"
+          >
+            Últimos 7 días
+          </button>
+          <button
+            onClick={handlePresetThisMonth}
+            className="px-3 py-1.5 text-xs font-medium bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition-colors"
+          >
+            Este mes
+          </button>
+          <button
+            onClick={handlePresetLastMonth}
+            className="px-3 py-1.5 text-xs font-medium bg-orange-100 text-orange-700 rounded hover:bg-orange-200 transition-colors"
+          >
+            Mes anterior
+          </button>
+          <div className="h-4 w-px bg-theme-border mx-2 hidden sm:block"></div>
+          <select
+            onChange={handleMonthSelect}
+            className="px-3 py-1.5 text-xs font-medium bg-theme-surface-hover text-theme-text-primary rounded hover:bg-theme-border transition-colors focus:outline-none focus:ring-2 focus:ring-theme-primary/50 cursor-pointer"
+            defaultValue=""
+          >
+            <option value="" disabled>Seleccionar mes...</option>
+            {getRecentMonths().map((m) => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+        </div>
 
-          {(dateFrom || dateTo || appliedDateFrom || appliedDateTo) && (
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-theme-text-secondary">Desde:</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(event) => setDateFrom(event.target.value)}
+              className="px-3 py-2 bg-theme-background border border-theme-border rounded-lg text-sm text-theme-text-primary focus:outline-none focus:ring-2 focus:ring-theme-primary/50"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-theme-text-secondary">Hasta:</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(event) => setDateTo(event.target.value)}
+              className="px-3 py-2 bg-theme-background border border-theme-border rounded-lg text-sm text-theme-text-primary focus:outline-none focus:ring-2 focus:ring-theme-primary/50"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
             <button
-              onClick={handleClearFilters}
-              className="px-4 py-2 text-sm font-medium text-theme-error hover:bg-theme-error/10 rounded-lg transition-colors"
+              onClick={handleApplyFilters}
+              className="px-4 py-2 text-sm font-medium text-white bg-theme-primary hover:bg-theme-primary/90 rounded-lg transition-colors shadow-sm"
             >
-              Limpiar
+              Aplicar filtros
             </button>
-          )}
+
+            {(dateFrom || dateTo || appliedDateFrom || appliedDateTo) && (
+              <button
+                onClick={handleClearFilters}
+                className="px-4 py-2 text-sm font-medium text-theme-error hover:bg-theme-error/10 rounded-lg transition-colors"
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
