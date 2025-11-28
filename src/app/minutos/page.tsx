@@ -173,35 +173,20 @@ function MinutesContent() {
       }
 
       const monthlyRows = Array.isArray(monthlyData)
-        ? (monthlyData as Array<{ month_start: string; total_ms: number | null }>)
+        ? (monthlyData as Array<{ month_start: string; total_ms: number | null }>).
+            sort((a, b) => (a.month_start < b.month_start ? 1 : -1))
         : []
 
-      const monthTotals = new Map<string, number>()
-
-      monthlyRows.forEach((entry) => {
-        const monthDate = new Date(entry.month_start)
-        const key = `${monthDate.getUTCFullYear()}-${String(monthDate.getUTCMonth() + 1).padStart(2, '0')}`
-        monthTotals.set(key, entry.total_ms ?? 0)
-      })
-
-      const firstMonth = new Date(Date.UTC(startDate.getFullYear(), startDate.getMonth(), 1))
-      const lastMonth = new Date(Date.UTC(resolvedEndDate.getFullYear(), resolvedEndDate.getMonth(), 1))
-
-      const monthly: MonthlyMinutes[] = []
-
-      for (
-        let cursor = new Date(lastMonth.getTime());
-        cursor.getTime() >= firstMonth.getTime();
-        cursor.setUTCMonth(cursor.getUTCMonth() - 1)
-      ) {
-        const key = `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, '0')}`
-        const label = capitalize(monthFormatter.format(new Date(cursor)))
-        monthly.push({
+      const monthly: MonthlyMinutes[] = monthlyRows.map((entry) => {
+        const key = entry.month_start.slice(0, 7)
+        const monthDate = new Date(`${entry.month_start}T00:00:00Z`)
+        const label = capitalize(monthFormatter.format(monthDate))
+        return {
           key,
           label,
-          totalMs: monthTotals.get(key) ?? 0
-        })
-      }
+          totalMs: entry.total_ms ?? 0
+        }
+      })
 
       const { count: totalCount, error: countError } = await supabase
         .from('pca')
