@@ -126,7 +126,7 @@ function MinutesContent() {
       const startIso = startDate.toISOString()
       const endIso = resolvedEndDate.toISOString()
 
-      const { data: totalRangeData, error: totalRangeError } = await supabase.rpc<number>(
+      const { data: totalRangeData, error: totalRangeError } = await supabase.rpc(
         'sum_pca_duration_ms_between',
         {
           p_start_timestamp: startIso,
@@ -138,7 +138,7 @@ function MinutesContent() {
         throw totalRangeError
       }
 
-      const totalRangeMs = totalRangeData ?? 0
+      const totalRangeMs = typeof totalRangeData === 'number' ? totalRangeData : 0
 
       const last30Start = new Date(resolvedEndDate)
       last30Start.setDate(last30Start.getDate() - 30)
@@ -146,7 +146,7 @@ function MinutesContent() {
         last30Start.setTime(startDate.getTime())
       }
 
-      const { data: last30Data, error: last30Error } = await supabase.rpc<number>(
+      const { data: last30Data, error: last30Error } = await supabase.rpc(
         'sum_pca_duration_ms_between',
         {
           p_start_timestamp: last30Start.toISOString(),
@@ -158,20 +158,25 @@ function MinutesContent() {
         throw last30Error
       }
 
-      const last30Ms = last30Data ?? 0
+      const last30Ms = typeof last30Data === 'number' ? last30Data : 0
 
-      const { data: monthlyData, error: monthlyError } = await supabase.rpc<
-        { month_start: string; total_ms: number | null }[]
-      >('get_pca_duration_monthly', {
-        p_start_timestamp: startIso,
-        p_end_timestamp: endIso
-      })
+      const { data: monthlyData, error: monthlyError } = await supabase.rpc(
+        'get_pca_duration_monthly',
+        {
+          p_start_timestamp: startIso,
+          p_end_timestamp: endIso
+        }
+      )
 
       if (monthlyError) {
         throw monthlyError
       }
 
-      const monthly: MonthlyMinutes[] = (monthlyData ?? []).map((entry) => {
+      const monthlyRows = Array.isArray(monthlyData)
+        ? (monthlyData as Array<{ month_start: string; total_ms: number | null }>)
+        : []
+
+      const monthly: MonthlyMinutes[] = monthlyRows.map((entry) => {
         const monthDate = new Date(entry.month_start)
         const key = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`
         const label = capitalize(monthFormatter.format(monthDate))
